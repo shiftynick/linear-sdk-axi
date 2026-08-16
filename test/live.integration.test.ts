@@ -39,7 +39,7 @@ describeLive("live Linear read-only integration", () => {
   it("lists teams without mutating Linear", () => {
     const result = runBinary(["team", "list", "--limit", "5"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/teams:|0 teams/);
+    expect(result.stdout).toMatch(/teams\[\d+\]\{key,name,issueCount\}:|0 teams/);
     expect(result.stderr).toBe("");
   });
 });
