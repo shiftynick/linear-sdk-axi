@@ -10,14 +10,14 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const STATUS_HELP = `usage: linear-axi status [--team <key>]
+export const STATUS_HELP = `usage: linear-sdk-axi status [--team <key>]
 List workflow states for the default or specified team.
 
 flags: --team <key>, --help
-alias: linear-axi workflow
+alias: linear-sdk-axi workflow
 examples:
-  linear-axi status
-  linear-axi status --team ENG
+  linear-sdk-axi status
+  linear-sdk-axi status --team ENG
 `;
 
 const stateSchema: FieldDef[] = [
@@ -46,8 +46,8 @@ export async function statusCommand(
     `team: ${team.key ?? team.name ?? team.id}`,
     renderList("states", items, stateSchema, "0 workflow states"),
     renderHelp([
-      `Run \`linear-axi issue list${suffix}\` to list issues`,
-      `Run \`linear-axi issue create --title "..."${suffix}\` to create an issue`,
+      `Run \`linear-sdk-axi issue list${suffix}\` to list issues`,
+      `Run \`linear-sdk-axi issue create --title "..."${suffix}\` to create an issue`,
     ]),
   ]);
 }

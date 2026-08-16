@@ -11,14 +11,14 @@ export type ErrorCode =
 export { AxiError, exitCodeForError };
 
 const AUTH_HELP = [
-  "Create a personal API key at Linear Settings → API (https://linear.app/settings/api)",
-  "export LINEAR_API_KEY=<key>",
-  "Then retry the same command",
+  "Set LINEAR_API_KEY from Linear Settings -> API (https://linear.app/settings/api)",
+  "Or run `linear-sdk-axi auth login --client-id <client-id>` after registering an OAuth app",
+  "Never paste credentials into chat",
 ];
 
 export function authRequiredError(): AxiError {
   return new AxiError(
-    "LINEAR_API_KEY is not set. Create a personal API key at Linear Settings → API (https://linear.app/settings/api) and export LINEAR_API_KEY. Never paste the key into chat.",
+    "No Linear credentials found. Set LINEAR_API_KEY or run `linear-sdk-axi auth login --client-id <client-id>`. Never paste credentials into chat.",
     "AUTH_REQUIRED",
     AUTH_HELP,
   );
@@ -75,7 +75,7 @@ export function mapLinearError(err: unknown): AxiError {
     /invalid api key/i.test(message)
   ) {
     return new AxiError(
-      "Linear authentication failed. Check LINEAR_API_KEY at Linear Settings → API.",
+      "Linear authentication failed. Check LINEAR_API_KEY or run `linear-sdk-axi auth login` again.",
       "AUTH_REQUIRED",
       AUTH_HELP,
     );
