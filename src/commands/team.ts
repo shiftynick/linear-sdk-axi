@@ -10,13 +10,13 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const TEAM_HELP = `usage: linear-axi team list [--limit]
+export const TEAM_HELP = `usage: linear-sdk-axi team list [--limit]
 List Linear teams (key, name, issue count when cheap).
 
 subcommands: list
 flags{list}: --limit (default 50), --help
 examples:
-  linear-axi team list
+  linear-sdk-axi team list
 `;
 
 const teamSchema: FieldDef[] = [
@@ -35,7 +35,7 @@ export async function teamCommand(args: string[]): Promise<string> {
       return listTeamsCommand(args);
     default:
       throw new AxiError(`Unknown team subcommand: ${sub}`, "VALIDATION_ERROR", [
-        "Run `linear-axi team --help`",
+        "Run `linear-sdk-axi team --help`",
       ]);
   }
 }
@@ -56,8 +56,8 @@ async function listTeamsCommand(args: string[]): Promise<string> {
     formatCountLine({ count: items.length, limit }),
     renderList("teams", items, teamSchema, "0 teams"),
     renderHelp([
-      "Run `linear-axi issue list --team <key>` to list a team's issues",
-      "Run `linear-axi status --team <key>` for workflow states",
+      "Run `linear-sdk-axi issue list --team <key>` to list a team's issues",
+      "Run `linear-sdk-axi status --team <key>` for workflow states",
     ]),
   ]);
 }

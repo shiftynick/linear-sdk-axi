@@ -89,6 +89,10 @@ export type MockIssue = {
   team: MockTeam;
   assignee?: MockUser | null;
   project?: MockProject | null;
+  cycleId?: string | null;
+  priority?: number;
+  estimate?: number | null;
+  dueDate?: string | null;
   parentId?: string;
   labels?: MockLabel[];
   relations?: MockRelation[];
@@ -178,6 +182,10 @@ function wrapIssue(
     commentCount: issue.commentCount ?? issue.comments?.length ?? 0,
     labelIds: issue.labels?.map((label) => label.id) ?? [],
     parentId: issue.parentId,
+    cycleId: issue.cycleId,
+    priority: issue.priority ?? 0,
+    estimate: issue.estimate ?? null,
+    dueDate: issue.dueDate ?? null,
     state: Promise.resolve(issue.state),
     team: Promise.resolve(wrapTeam(issue.team)),
     assignee: Promise.resolve(issue.assignee ?? null),
@@ -318,6 +326,10 @@ export function createMockLinear(options: MockOptions = {}): {
       assignee,
       labels: issueLabels,
       parentId: typeof rec.parentId === "string" ? rec.parentId : undefined,
+      cycleId: typeof rec.cycleId === "string" ? rec.cycleId : undefined,
+      priority: typeof rec.priority === "number" ? rec.priority : 0,
+      estimate: typeof rec.estimate === "number" ? rec.estimate : null,
+      dueDate: typeof rec.dueDate === "string" ? rec.dueDate : null,
     });
     issues.push(created);
     return { success: true, issue: wrapIssue(created, issues, relations) };
@@ -335,6 +347,16 @@ export function createMockLinear(options: MockOptions = {}): {
     }
     if (typeof rec.assigneeId === "string") {
       found.assignee = users.find((u) => u.id === rec.assigneeId) ?? found.assignee;
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, "cycleId")) {
+      found.cycleId = typeof rec.cycleId === "string" ? rec.cycleId : null;
+    }
+    if (typeof rec.priority === "number") found.priority = rec.priority;
+    if (Object.prototype.hasOwnProperty.call(rec, "estimate")) {
+      found.estimate = typeof rec.estimate === "number" ? rec.estimate : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, "dueDate")) {
+      found.dueDate = typeof rec.dueDate === "string" ? rec.dueDate : null;
     }
     if (Object.prototype.hasOwnProperty.call(rec, "parentId")) {
       found.parentId = typeof rec.parentId === "string" ? rec.parentId : undefined;

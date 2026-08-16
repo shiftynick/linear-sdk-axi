@@ -30,9 +30,9 @@ describe("usage map", () => {
     const { out, exit } = await run(["usage"]);
     expect(exit).toBe(0);
     expect(out).toContain("tier: overview");
-    for (const topic of ["issue", "project", "team", "account", "setup"]) {
+    for (const topic of ["issue", "label", "project", "team", "account", "auth", "setup"]) {
       expect(out).toContain(topic);
-      expect(out).toContain(`linear-axi usage ${topic}`);
+      expect(out).toContain(`linear-sdk-axi usage ${topic}`);
     }
   });
 
@@ -40,9 +40,9 @@ describe("usage map", () => {
     const { out, exit } = await run(["usage", "issue"]);
     expect(exit).toBe(0);
     expect(out).toContain("tier: issue");
-    expect(out).toContain("linear-axi issue list");
-    expect(out).toContain("linear-axi issue create");
-    expect(out).toContain("linear-axi issue close");
+    expect(out).toContain("linear-sdk-axi issue list");
+    expect(out).toContain("linear-sdk-axi issue create");
+    expect(out).toContain("linear-sdk-axi issue close");
     expect(out).toContain("--dry-run");
   });
 
