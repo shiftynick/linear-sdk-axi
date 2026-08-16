@@ -30,6 +30,7 @@ import {
   isStateType,
   listIssues,
   resolveAssigneeId,
+  resolveCycleId,
   resolveProjectId,
   resolveStateId,
   resolveTeam,
@@ -48,7 +49,7 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const ISSUE_HELP = `usage: linear-axi issue <subcommand>
+export const ISSUE_HELP = `usage: linear-sdk-axi issue <subcommand>
 subcommands[8]:
   list, search <query>, view <id>, create, update <id>, relation <list|add>, comment <id>, comment list <id>, close <id>
 flags{list}:
@@ -58,9 +59,9 @@ flags{search}:
 flags{view}:
   --full, --comments, --sub-issues
 flags{create}:
-  --title (required), --team (required unless only one team), --description/--body, --assignee, --state, --project, --parent, --label (repeatable), --dry-run
+  --title (required), --team (required unless only one team), --description/--body, --assignee, --state, --project, --cycle <id>, --priority <0-4>, --estimate <n>, --due-date <YYYY-MM-DD>, --parent, --label (repeatable), --dry-run
 flags{update}:
-  --title, --description/--body, --assignee, --state, --project, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
+  --title, --description/--body, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
 flags{relation list}:
   --limit (default 50)
 flags{relation add}:
@@ -70,19 +71,19 @@ flags{comment}:
 flags{close}:
   --dry-run
 examples:
-  linear-axi issue list
-  linear-axi issue list --team ENG --state started
-  linear-axi issue search "login timeout" --team ENG
-  linear-axi issue view ENG-123
-  linear-axi issue view ENG-123 --full --comments
-  linear-axi issue create --title "Fix login" --team ENG --dry-run
-  linear-axi issue update ENG-123 --state Done
-  linear-axi issue relation list ENG-123
-  linear-axi issue relation add ENG-123 --blocks ENG-124 --dry-run
-  linear-axi issue comment ENG-123 --body "Shipped"
-  linear-axi issue comment list ENG-123
-  linear-axi issue comment ENG-123 --reply-to <comment-id> --body "Reply"
-  linear-axi issue close ENG-123
+  linear-sdk-axi issue list
+  linear-sdk-axi issue list --team ENG --state started
+  linear-sdk-axi issue search "login timeout" --team ENG
+  linear-sdk-axi issue view ENG-123
+  linear-sdk-axi issue view ENG-123 --full --comments
+  linear-sdk-axi issue create --title "Fix login" --team ENG --dry-run
+  linear-sdk-axi issue update ENG-123 --state Done --priority 2
+  linear-sdk-axi issue relation list ENG-123
+  linear-sdk-axi issue relation add ENG-123 --blocks ENG-124 --dry-run
+  linear-sdk-axi issue comment ENG-123 --body "Shipped"
+  linear-sdk-axi issue comment list ENG-123
+  linear-sdk-axi issue comment ENG-123 --reply-to <comment-id> --body "Reply"
+  linear-sdk-axi issue close ENG-123
 `;
 
 const listSchema: FieldDef[] = [
@@ -100,6 +101,11 @@ const EXTRA_FIELDS: Record<string, FieldDef> = {
   ),
   stateType: field("stateType"),
   commentCount: field("commentCount"),
+  project: field("projectName", "project"),
+  cycleId: field("cycleId"),
+  priority: field("priority"),
+  estimate: field("estimate"),
+  dueDate: field("dueDate"),
   id: field("id"),
 };
 
@@ -156,7 +162,7 @@ export async function issueCommand(
       throw new AxiError(
         `Unknown issue subcommand: ${sub}`,
         "VALIDATION_ERROR",
-        ["Run `linear-axi issue --help`"],
+        ["Run `linear-sdk-axi issue --help`"],
       );
   }
 }
@@ -185,8 +191,8 @@ async function searchIssuesCommand(
     }),
     renderList("issues", hydrated, listSchema, "0 matching issues"),
     renderHelp([
-      `Run \`linear-axi issue view <id>${suffix}\` for details`,
-      `Run \`linear-axi issue search "..."${suffix}\` to refine the query`,
+      `Run \`linear-sdk-axi issue view <id>${suffix}\` for details`,
+      `Run \`linear-sdk-axi issue search "..."${suffix}\` to refine the query`,
     ]),
   ]);
 }
@@ -268,12 +274,12 @@ async function listIssuesCommand(
     : "0 matching issues";
   const suffix = teamFlagSuffix(ctx);
   const help = [
-    `Run \`linear-axi issue view <id>${suffix}\` for details`,
-    `Run \`linear-axi issue create --title "..."${suffix}\` to create an issue`,
+    `Run \`linear-sdk-axi issue view <id>${suffix}\` for details`,
+    `Run \`linear-sdk-axi issue create --title "..."${suffix}\` to create an issue`,
   ];
   if (hydrated.length === limit && result.totalCount > limit) {
     help.unshift(
-      `Run \`linear-axi issue list --limit ${Math.max(limit * 2, 50)}${suffix}\` to see more`,
+      `Run \`linear-sdk-axi issue list --limit ${Math.max(limit * 2, 50)}${suffix}\` to see more`,
     );
   }
   return renderOutput([
@@ -319,6 +325,11 @@ async function viewIssueCommand(
     field("assignee"),
     field("team"),
     field("parent"),
+    field("projectName", "project"),
+    field("cycleId"),
+    field("priority"),
+    field("estimate"),
+    field("dueDate"),
     field("url"),
     field("commentCount"),
     field("description"),
@@ -351,21 +362,21 @@ async function viewIssueCommand(
   const help: string[] = [];
   if (truncated) {
     help.push(
-      `Run \`linear-axi issue view ${hydrated.identifier} --full${suffix}\` to see complete description`,
+      `Run \`linear-sdk-axi issue view ${hydrated.identifier} --full${suffix}\` to see complete description`,
     );
   }
   if (!withComments) {
     help.push(
-      `Run \`linear-axi issue view ${hydrated.identifier} --comments${suffix}\` to include comments`,
+      `Run \`linear-sdk-axi issue view ${hydrated.identifier} --comments${suffix}\` to include comments`,
     );
   }
   if (!withSubIssues) {
     help.push(
-      `Run \`linear-axi issue view ${hydrated.identifier} --sub-issues${suffix}\` to include sub-issues`,
+      `Run \`linear-sdk-axi issue view ${hydrated.identifier} --sub-issues${suffix}\` to include sub-issues`,
     );
   }
   help.push(
-    `Run \`linear-axi issue close ${hydrated.identifier}${suffix}\` to complete this issue`,
+    `Run \`linear-sdk-axi issue close ${hydrated.identifier}${suffix}\` to complete this issue`,
   );
   blocks.push(renderHelp(help));
   return renderOutput(blocks);
@@ -404,6 +415,40 @@ async function resolveParentIssue(
   return parent;
 }
 
+function parseIntegerFlag(
+  value: string | undefined,
+  flag: string,
+  options: { min: number; max?: number; allowNone?: boolean },
+): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (options.allowNone && value.toLowerCase() === "none") return null;
+  if (!/^-?\d+$/.test(value)) {
+    throw new AxiError(`${flag} must be an integer`, "VALIDATION_ERROR");
+  }
+  const numeric = Number(value);
+  if (numeric < options.min || (options.max !== undefined && numeric > options.max)) {
+    const range = options.max === undefined ? `${options.min} or greater` : `${options.min}-${options.max}`;
+    throw new AxiError(`${flag} must be ${range}`, "VALIDATION_ERROR");
+  }
+  return numeric;
+}
+
+function parseDueDate(
+  value: string | undefined,
+  allowNone: boolean,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (allowNone && value.toLowerCase() === "none") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AxiError("--due-date must use YYYY-MM-DD", "VALIDATION_ERROR");
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new AxiError("--due-date must be a valid calendar date", "VALIDATION_ERROR");
+  }
+  return value;
+}
+
 async function createIssueCommand(
   args: string[],
   ctx?: TeamContext,
@@ -419,6 +464,10 @@ async function createIssueCommand(
       "--assignee",
       "--state",
       "--project",
+      "--cycle",
+      "--priority",
+      "--estimate",
+      "--due-date",
       "--parent",
       "--label",
       "--dry-run",
@@ -428,7 +477,7 @@ async function createIssueCommand(
   const title = optionalFlagArg(args, "--title");
   if (!title) {
     throw new AxiError("--title is required", "VALIDATION_ERROR", [
-      'Run `linear-axi issue create --title "..." --team <key>`',
+      'Run `linear-sdk-axi issue create --title "..." --team <key>`',
     ]);
   }
   const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
@@ -439,6 +488,15 @@ async function createIssueCommand(
   const assigneeRaw = optionalFlagArg(args, "--assignee");
   const stateRaw = optionalFlagArg(args, "--state");
   const projectRaw = optionalFlagArg(args, "--project");
+  const cycleRaw = optionalFlagArg(args, "--cycle");
+  const priority = parseIntegerFlag(optionalFlagArg(args, "--priority"), "--priority", {
+    min: 0,
+    max: 4,
+  });
+  const estimate = parseIntegerFlag(optionalFlagArg(args, "--estimate"), "--estimate", {
+    min: 0,
+  });
+  const dueDate = parseDueDate(optionalFlagArg(args, "--due-date"), false);
   const parentRaw = optionalFlagArg(args, "--parent");
   const labelRaw = repeatableFlagArgs(args, "--label");
 
@@ -451,6 +509,10 @@ async function createIssueCommand(
   if (assigneeRaw) input.assigneeId = await resolveAssigneeId(assigneeRaw);
   if (stateRaw) input.stateId = await resolveStateId(team, stateRaw);
   if (projectRaw) input.projectId = await resolveProjectId(projectRaw);
+  if (cycleRaw) input.cycleId = await resolveCycleId(cycleRaw, String(team.id));
+  if (priority !== undefined) input.priority = priority;
+  if (estimate !== undefined) input.estimate = estimate;
+  if (dueDate !== undefined) input.dueDate = dueDate;
   if (parentRaw) {
     const parent = await resolveParentIssue(parentRaw, { teamId: String(team.id) });
     input.parentId = parent.id;
@@ -473,12 +535,15 @@ async function createIssueCommand(
         field("title"),
         field("state"),
         field("team"),
+        ...(cycleRaw || priority !== undefined || estimate !== undefined || dueDate !== undefined
+          ? [field("cycleId"), field("priority"), field("estimate"), field("dueDate")]
+          : []),
         ...(labelRaw.length > 0 ? [field("labels")] : []),
         field("url"),
       ]),
       renderHelp([
-        `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
-        `Run \`linear-axi issue comment ${hydrated.identifier} --body "..."${suffix}\` to comment`,
+        `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
+        `Run \`linear-sdk-axi issue comment ${hydrated.identifier} --body "..."${suffix}\` to comment`,
       ]),
     ]);
   });
@@ -502,6 +567,10 @@ async function updateIssueCommand(
       "--assignee",
       "--state",
       "--project",
+      "--cycle",
+      "--priority",
+      "--estimate",
+      "--due-date",
       "--parent",
       "--add-label",
       "--remove-label",
@@ -520,6 +589,16 @@ async function updateIssueCommand(
   const assigneeRaw = optionalFlagArg(args, "--assignee");
   const stateRaw = optionalFlagArg(args, "--state");
   const projectRaw = optionalFlagArg(args, "--project");
+  const cycleRaw = optionalFlagArg(args, "--cycle");
+  const priority = parseIntegerFlag(optionalFlagArg(args, "--priority"), "--priority", {
+    min: 0,
+    max: 4,
+  });
+  const estimate = parseIntegerFlag(optionalFlagArg(args, "--estimate"), "--estimate", {
+    min: 0,
+    allowNone: true,
+  });
+  const dueDate = parseDueDate(optionalFlagArg(args, "--due-date"), true);
   const parentRaw = optionalFlagArg(args, "--parent");
   const addLabelRaw = repeatableFlagArgs(args, "--add-label");
   const removeLabelRaw = repeatableFlagArgs(args, "--remove-label");
@@ -530,12 +609,16 @@ async function updateIssueCommand(
     assigneeRaw === undefined &&
     stateRaw === undefined &&
     projectRaw === undefined &&
+    cycleRaw === undefined &&
+    priority === undefined &&
+    estimate === undefined &&
+    dueDate === undefined &&
     parentRaw === undefined &&
     addLabelRaw.length === 0 &&
     removeLabelRaw.length === 0
   ) {
     throw new AxiError(
-      "issue update requires at least one of --title, --body/--description, --assignee, --state, --project, --parent",
+      "issue update requires at least one editable flag",
       "VALIDATION_ERROR",
     );
   }
@@ -570,6 +653,25 @@ async function updateIssueCommand(
     const projectId = await resolveProjectId(projectRaw);
     planned.projectId = projectId;
     if (projectId !== current.projectId) input.projectId = projectId;
+  }
+  if (cycleRaw !== undefined) {
+    const cycleId = cycleRaw.toLowerCase() === "none"
+      ? null
+      : await resolveCycleId(cycleRaw, current.teamId);
+    planned.cycleId = cycleId;
+    if (cycleId !== current.cycleId) input.cycleId = cycleId;
+  }
+  if (priority !== undefined) {
+    planned.priority = priority;
+    if (priority !== current.priority) input.priority = priority;
+  }
+  if (estimate !== undefined) {
+    planned.estimate = estimate;
+    if (estimate !== current.estimate) input.estimate = estimate;
+  }
+  if (dueDate !== undefined) {
+    planned.dueDate = dueDate;
+    if (dueDate !== current.dueDate) input.dueDate = dueDate;
   }
   if (parentRaw !== undefined) {
     const parentId = parentRaw.toLowerCase() === "none"
@@ -635,7 +737,7 @@ async function updateIssueCommand(
         ],
       ),
       renderHelp([
-        `Run \`linear-axi issue view ${ident}${suffix}\` for details`,
+        `Run \`linear-sdk-axi issue view ${ident}${suffix}\` for details`,
       ]),
     ]);
   }
@@ -660,10 +762,13 @@ async function updateIssueCommand(
           field("state"),
           field("assignee"),
           field("team"),
+          ...(cycleRaw !== undefined || priority !== undefined || estimate !== undefined || dueDate !== undefined
+            ? [field("cycleId"), field("priority"), field("estimate"), field("dueDate")]
+            : []),
           ...(requestedLabelChanges ? [field("labels")] : []),
         ]),
         renderHelp([
-          `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
+          `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
         ]),
       ]);
     },
@@ -704,7 +809,7 @@ async function relationIssueCommand(
   throw new AxiError(
     `Unknown issue relation subcommand: ${sub ?? "(missing)"}`,
     "VALIDATION_ERROR",
-    ["Run `linear-axi issue --help`"],
+    ["Run `linear-sdk-axi issue --help`"],
   );
 }
 
@@ -733,8 +838,8 @@ async function listIssueRelationsCommand(
       "0 relations",
     ),
     renderHelp([
-      `Run \`linear-axi issue view <id>${suffix}\` to inspect a related issue`,
-      `Run \`linear-axi issue relation add ${source.identifier} --blocks <id> --dry-run${suffix}\` to plan a relation`,
+      `Run \`linear-sdk-axi issue view <id>${suffix}\` to inspect a related issue`,
+      `Run \`linear-sdk-axi issue relation add ${source.identifier} --blocks <id> --dry-run${suffix}\` to plan a relation`,
     ]),
   ]);
 }
@@ -798,7 +903,7 @@ async function addIssueRelationCommand(
         [field("source"), field("relation"), field("target"), field("message")],
       ),
       renderHelp([
-        `Run \`linear-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
+        `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
       ]),
     ]);
   }
@@ -817,7 +922,7 @@ async function addIssueRelationCommand(
         [field("id"), field("source"), field("relation"), field("target")],
       ),
       renderHelp([
-        `Run \`linear-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
+        `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
       ]),
     ]);
   });
@@ -847,7 +952,7 @@ async function commentIssueCommand(
       throw new AxiError(
         `Comment ${replyTo} is not part of issue ${hydrated.identifier}`,
         "NOT_FOUND",
-        [`Run \`linear-axi issue comment list ${hydrated.identifier}${teamFlagSuffix(ctx)}\` to find a reply target`],
+        [`Run \`linear-sdk-axi issue comment list ${hydrated.identifier}${teamFlagSuffix(ctx)}\` to find a reply target`],
       );
     }
   }
@@ -866,7 +971,7 @@ async function commentIssueCommand(
         [field("issue"), field("replyTo"), field("body")],
       ),
       renderHelp([
-        `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
+        `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
       ]),
     ]);
   });
@@ -906,10 +1011,10 @@ async function listIssueCommentsCommand(
       "0 comments",
     ),
     renderHelp([
-      `Run \`linear-axi issue comment ${hydrated.identifier} --reply-to <comment-id> --body "..."${suffix}\` to reply`,
+      `Run \`linear-sdk-axi issue comment ${hydrated.identifier} --reply-to <comment-id> --body "..."${suffix}\` to reply`,
       full
-        ? `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for the issue`
-        : `Run \`linear-axi issue comment list ${hydrated.identifier} --full${suffix}\` for complete comment text`,
+        ? `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for the issue`
+        : `Run \`linear-sdk-axi issue comment list ${hydrated.identifier} --full${suffix}\` for complete comment text`,
     ]),
   ]);
 }
@@ -948,7 +1053,7 @@ async function closeIssueCommand(
         ],
       ),
       renderHelp([
-        `Run \`linear-axi issue view ${current.identifier}${suffix}\` for details`,
+        `Run \`linear-sdk-axi issue view ${current.identifier}${suffix}\` for details`,
       ]),
     ]);
   }
@@ -974,7 +1079,7 @@ async function closeIssueCommand(
           field("stateType"),
         ]),
         renderHelp([
-          `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
+          `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
         ]),
       ]);
     },

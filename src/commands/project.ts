@@ -27,17 +27,17 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const PROJECT_HELP = `usage: linear-axi project <list|view> [id]
+export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view> [id]
 List or view Linear projects.
 
 subcommands: list, view <id|name>
 flags{list}: --team <key>, --limit (default 30), --help
 flags{view}: --full, --help
 examples:
-  linear-axi project list
-  linear-axi project list --team ENG
-  linear-axi project view "Launch"
-  linear-axi project view <id> --full
+  linear-sdk-axi project list
+  linear-sdk-axi project list --team ENG
+  linear-sdk-axi project view "Launch"
+  linear-sdk-axi project view <id> --full
 `;
 
 const listSchema: FieldDef[] = [
@@ -67,7 +67,7 @@ export async function projectCommand(
       throw new AxiError(
         `Unknown project subcommand: ${sub}`,
         "VALIDATION_ERROR",
-        ["Run `linear-axi project --help`"],
+        ["Run `linear-sdk-axi project --help`"],
       );
   }
 }
@@ -96,8 +96,8 @@ async function listProjectsCommand(
     formatCountLine({ count: items.length, limit }),
     renderList("projects", items, listSchema, "0 projects"),
     renderHelp([
-      `Run \`linear-axi project view <id>${suffix}\` for details`,
-      `Run \`linear-axi issue list${suffix}\` to list issues`,
+      `Run \`linear-sdk-axi project view <id>${suffix}\` for details`,
+      `Run \`linear-sdk-axi issue list${suffix}\` to list issues`,
     ]),
   ]);
 }
@@ -137,10 +137,10 @@ async function viewProjectCommand(
   if (truncated) {
     const ident = getPositional(args, 1) ?? "<id>";
     help.push(
-      `Run \`linear-axi project view ${ident} --full${suffix}\` to see complete description`,
+      `Run \`linear-sdk-axi project view ${ident} --full${suffix}\` to see complete description`,
     );
   }
-  help.push(`Run \`linear-axi issue list${suffix}\` to list issues`);
+  help.push(`Run \`linear-sdk-axi issue list${suffix}\` to list issues`);
   return renderOutput([
     renderDetail("project", item, schema),
     renderHelp(help),

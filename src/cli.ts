@@ -1,9 +1,11 @@
 import { runAxiCli } from "axi-sdk-js";
-import { parseTeamArgs, type TeamContext } from "./client.js";
+import { parseTeamArgs, prepareLinearAuth, type TeamContext } from "./client.js";
+import { authCommand, AUTH_HELP } from "./commands/auth.js";
 import { doctorCommand, DOCTOR_HELP } from "./commands/doctor.js";
 import { cycleCommand, CYCLE_HELP } from "./commands/cycle.js";
 import { homeCommand } from "./commands/home.js";
 import { issueCommand, ISSUE_HELP } from "./commands/issue.js";
+import { labelCommand, LABEL_HELP } from "./commands/label.js";
 import { meCommand, ME_HELP } from "./commands/me.js";
 import { projectCommand, PROJECT_HELP } from "./commands/project.js";
 import { setupCommand, SETUP_HELP } from "./commands/setup.js";
@@ -22,29 +24,32 @@ type MainOptions = {
   stdout?: CliStdout;
 };
 
-export const TOP_HELP = `usage: linear-axi [command] [args] [flags]
-commands[11]:
-  (none)=dashboard, usage, issue, project, cycle, team, me, status, workflow, doctor, setup
+export const TOP_HELP = `usage: linear-sdk-axi [command] [args] [flags]
+commands[13]:
+  (none)=dashboard, usage, issue, label, project, cycle, team, me, status, workflow, doctor, auth, setup
 flags[3]:
   --team (after command) space or equals form, --help, -v/-V/--version
 examples:
-  linear-axi
-  linear-axi usage
-  linear-axi usage issue
-  linear-axi issue list
-  linear-axi issue list --team ENG
-  linear-axi issue view ENG-123
-  linear-axi issue create --title "Fix login" --team ENG
-  linear-axi cycle list --team ENG
-  linear-axi me
-  linear-axi status --team ENG
-  linear-axi doctor
-  linear-axi setup hooks
+  linear-sdk-axi
+  linear-sdk-axi usage
+  linear-sdk-axi usage issue
+  linear-sdk-axi issue list
+  linear-sdk-axi issue list --team ENG
+  linear-sdk-axi issue view ENG-123
+  linear-sdk-axi issue create --title "Fix login" --team ENG
+  linear-sdk-axi label list --team ENG
+  linear-sdk-axi cycle list --team ENG
+  linear-sdk-axi me
+  linear-sdk-axi status --team ENG
+  linear-sdk-axi doctor
+  linear-sdk-axi auth status
+  linear-sdk-axi setup hooks
 `;
 
 const COMMAND_HELP: Record<string, string> = {
   usage: USAGE_HELP,
   issue: ISSUE_HELP,
+  label: LABEL_HELP,
   project: PROJECT_HELP,
   cycle: CYCLE_HELP,
   team: TEAM_HELP,
@@ -52,21 +57,24 @@ const COMMAND_HELP: Record<string, string> = {
   status: STATUS_HELP,
   workflow: STATUS_HELP,
   doctor: DOCTOR_HELP,
+  auth: AUTH_HELP,
   setup: SETUP_HELP,
 };
 
 type CommandFn = (args: string[], ctx?: TeamContext) => Promise<string>;
 
-function withTeamContext(handler: CommandFn): CommandFn {
-  return (args, ctx) => {
+function withTeamContext(handler: CommandFn, requiresAuth = true): CommandFn {
+  return async (args, ctx) => {
+    if (requiresAuth) await prepareLinearAuth();
     const { strippedArgs } = parseTeamArgs(args);
     return handler(strippedArgs, ctx);
   };
 }
 
 const COMMANDS: Record<string, CommandFn> = {
-  usage: withTeamContext(usageCommand),
+  usage: withTeamContext(usageCommand, false),
   issue: withTeamContext(issueCommand),
+  label: withTeamContext(labelCommand),
   project: withTeamContext(projectCommand),
   cycle: withTeamContext(cycleCommand),
   team: withTeamContext(teamCommand),
@@ -74,6 +82,7 @@ const COMMANDS: Record<string, CommandFn> = {
   status: withTeamContext(statusCommand),
   workflow: withTeamContext(statusCommand),
   doctor: withTeamContext(doctorCommand),
+  auth: authCommand,
   setup: setupCommand,
 };
 
