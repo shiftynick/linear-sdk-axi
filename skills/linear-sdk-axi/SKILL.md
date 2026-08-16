@@ -74,8 +74,9 @@ npx -y linear-sdk-axi label list
 npx -y linear-sdk-axi label list --team <key>
 npx -y linear-sdk-axi project list
 npx -y linear-sdk-axi project view <id>
-npx -y linear-sdk-axi project create --name "<outcome>" --team <key> --target-date <YYYY-MM-DD> --dry-run
-npx -y linear-sdk-axi project update <id|name> --priority <0-4> --target-date <YYYY-MM-DD|none> --dry-run
+npx -y linear-sdk-axi project status list
+npx -y linear-sdk-axi project create --name "<outcome>" --team <key> --status "<id|name|type>" --target-date <YYYY-MM-DD> --dry-run
+npx -y linear-sdk-axi project update <id|name> --status "<id|name|type>" --priority <0-4> --target-date <YYYY-MM-DD|none> --dry-run
 npx -y linear-sdk-axi cycle list
 npx -y linear-sdk-axi cycle list --team <key>
 npx -y linear-sdk-axi cycle view <id>
