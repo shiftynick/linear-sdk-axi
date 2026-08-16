@@ -57,7 +57,11 @@ describe("project writes", () => {
   });
 
   it("creates a project scoped to the requested team", async () => {
-    const { client, spies, issues } = createMockLinear();
+    const statuses = [
+      { id: "status-planned", name: "Planned", type: "planned" },
+      { id: "status-started", name: "In Progress", type: "started" },
+    ];
+    const { client, spies, issues } = createMockLinear({ projectStatuses: statuses });
     setLinearClientForTests(client);
 
     const { out, exit } = await run([
@@ -69,6 +73,8 @@ describe("project writes", () => {
       "ENG",
       "--description",
       "Ship the direct SDK client",
+      "--status",
+      "In Progress",
       "--priority",
       "1",
     ]);
@@ -77,6 +83,7 @@ describe("project writes", () => {
     expect(spies.createProject.calls[0][0]).toMatchObject({
       name: "Launch CLI",
       teamIds: [defaultTeam.id],
+      statusId: "status-started",
       priority: 1,
     });
     expect(issues).toEqual([]);
@@ -84,6 +91,10 @@ describe("project writes", () => {
   });
 
   it("updates dates safely and recognizes no-ops", async () => {
+    const statuses = [
+      { id: "status-planned", name: "Planned", type: "planned" },
+      { id: "status-started", name: "In Progress", type: "started" },
+    ];
     const project = {
       id: "project-1",
       name: "Launch CLI",
@@ -92,8 +103,13 @@ describe("project writes", () => {
       startDate: "2026-09-01",
       targetDate: "2026-10-01",
       teamIds: [defaultTeam.id],
+      statusId: "status-started",
+      projectStatus: statuses[1],
     };
-    const { client, spies, issues } = createMockLinear({ projects: [project] });
+    const { client, spies, issues } = createMockLinear({
+      projects: [project],
+      projectStatuses: statuses,
+    });
     setLinearClientForTests(client);
 
     const changed = await run([
@@ -104,11 +120,14 @@ describe("project writes", () => {
       "none",
       "--description",
       "Refined scope",
+      "--status",
+      "Planned",
     ]);
     expect(changed.exit).toBe(0);
     expect(spies.updateProject.calls[0][1]).toMatchObject({
       targetDate: null,
       description: "Refined scope",
+      statusId: "status-planned",
     });
     expect(issues).toEqual([]);
 
@@ -134,5 +153,20 @@ describe("project writes", () => {
     expect(exit).toBe(2);
     expect(out).toContain("valid calendar date");
     expect(spies.createProject.calls).toHaveLength(0);
+  });
+
+  it("lists project statuses before a status write", async () => {
+    const { client } = createMockLinear({
+      projectStatuses: [
+        { id: "status-planned", name: "Planned", type: "planned" },
+        { id: "status-started", name: "In Progress", type: "started" },
+      ],
+    });
+    setLinearClientForTests(client);
+    const { out, exit } = await run(["project", "status", "list"]);
+    expect(exit).toBe(0);
+    expect(out).toContain("projectStatuses");
+    expect(out).toContain("status-started");
+    expect(out).toContain("In Progress");
   });
 });

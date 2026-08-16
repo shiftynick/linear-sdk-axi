@@ -85,8 +85,9 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-sdk-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-sdk-axi project list | Projects: name, state, progress |
 | linear-sdk-axi project view <id> | Project detail. Truncated description. --full |
-| linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, priority, start/target dates. --dry-run |
-| linear-sdk-axi project update <id> | Update name, description, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
+| linear-sdk-axi project status list | List action-ready project status IDs, names, and types |
+| linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, status, priority, start/target dates. --dry-run |
+| linear-sdk-axi project update <id> | Update name, description, status, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
 | linear-sdk-axi cycle list | Read-only cycles: id, name, state, progress. Optional `--team` |
 | linear-sdk-axi cycle view <id> | Cycle timing and description. `--full` for complete text |
 | linear-sdk-axi team list | Teams: key, name, issue count |
