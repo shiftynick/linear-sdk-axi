@@ -159,6 +159,21 @@ npm test
 Set credentials through your shell, local OAuth session, or secret manager before
 running this. Do not put credentials in source control or paste them into chat.
 
+## Maintainer release
+
+CI runs the complete test suite and an npm package dry-run on pull requests and
+`main`. The publish workflow is manual-only; after merging, configure the
+repository's `NPM_TOKEN` secret and run **Publish npm package** from GitHub
+Actions. It reruns tests, builds via `prepack`, and publishes with provenance.
+
+For a local release check:
+
+```powershell
+npm ci
+npm test
+npm pack --dry-run
+```
+
 ## Scope compared with the MCP CLI named `linear-axi`
 
 This project deliberately stays direct-SDK and npx-friendly. It now carries the
