@@ -146,3 +146,29 @@ export function optionalFlagArg(
   }
   return value;
 }
+
+/** Read a repeatable value flag such as --label one --label two. */
+export function repeatableFlagArgs(args: string[], flag: string): string[] {
+  const values: string[] = [];
+  const equalsPrefix = `${flag}=`;
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    let value: string | undefined;
+    if (arg === flag) {
+      value = args[index + 1];
+      index++;
+    } else if (arg.startsWith(equalsPrefix)) {
+      value = arg.slice(equalsPrefix.length);
+    } else {
+      continue;
+    }
+
+    if (value === undefined || value.trim() === "" || value.startsWith("--")) {
+      throw new AxiError(`${flag} requires a value`, "VALIDATION_ERROR");
+    }
+    values.push(value);
+  }
+
+  return values;
+}

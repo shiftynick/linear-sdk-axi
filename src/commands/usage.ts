@@ -42,17 +42,21 @@ const TOPICS: Record<string, UsageTopic> = {
     entries: [
       { goal: "my open work", command: "linear-axi issue list" },
       {
+        goal: "full-text search",
+        command: "linear-axi issue search \"...\" [--team <key>] [--comments]",
+      },
+      {
         goal: "team or state slice",
         command: "linear-axi issue list --team <key> --state <name|type>",
       },
       { goal: "inspect", command: "linear-axi issue view <id> [--comments] [--full]" },
       {
         goal: "create safely",
-        command: "linear-axi issue create --title \"...\" --team <key> --dry-run",
+        command: "linear-axi issue create --title \"...\" --team <key> --label <name|id> --dry-run",
       },
       {
         goal: "change fields",
-        command: "linear-axi issue update <id> --title \"...\" [--state <name|type>]",
+        command: "linear-axi issue update <id> --add-label <name|id> [--remove-label <name|id>]",
       },
       { goal: "comment", command: "linear-axi issue comment <id> --body \"...\"" },
       { goal: "complete", command: "linear-axi issue close <id> [--dry-run]" },

@@ -3,6 +3,7 @@ import { setLinearClientForTests } from "../src/client.js";
 import { main } from "../src/cli.js";
 import {
   createMockLinear,
+  defaultTeam,
   defaultViewer,
   makeIssue,
   stateByType,
@@ -92,6 +93,78 @@ describe("issue list", () => {
   });
 });
 
+describe("issue search", () => {
+  it("finds matching issue content and honors a team scope", async () => {
+    const productTeam = {
+      ...defaultTeam,
+      id: "team-2",
+      key: "PROD",
+      name: "Product",
+    };
+    const { client } = createMockLinear({
+      teams: [defaultTeam, productTeam],
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-12",
+          title: "Fix OAuth timeout",
+          description: "Token exchange exceeds the configured timeout.",
+        }),
+        makeIssue({
+          id: "i2",
+          identifier: "PROD-12",
+          title: "Fix OAuth timeout in signup",
+          team: productTeam,
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const all = await run(["issue", "search", "OAuth timeout"]);
+    expect(all.exit).toBe(0);
+    expect(all.out).toContain("ENG-12");
+    expect(all.out).toContain("PROD-12");
+
+    const scoped = await run([
+      "issue",
+      "search",
+      "OAuth timeout",
+      "--team",
+      "ENG",
+    ]);
+    expect(scoped.exit).toBe(0);
+    expect(scoped.out).toContain("ENG-12");
+    expect(scoped.out).not.toContain("PROD-12");
+  });
+
+  it("includes comment text only when requested", async () => {
+    const { client } = createMockLinear({
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-13",
+          title: "Investigate notifications",
+          comments: [{ id: "c1", body: "The retry queue is stuck" }],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const withoutComments = await run(["issue", "search", "retry queue"]);
+    expect(withoutComments.exit).toBe(0);
+    expect(withoutComments.out).toContain("0 matching issues");
+
+    const withComments = await run([
+      "issue",
+      "search",
+      "retry queue",
+      "--comments",
+    ]);
+    expect(withComments.exit).toBe(0);
+    expect(withComments.out).toContain("ENG-13");
+  });
+});
+
 describe("issue view", () => {
   it("truncates a long description and --full does not", async () => {
     const long = "Lorem ipsum " + "x".repeat(900);
@@ -151,6 +224,58 @@ describe("issue create", () => {
     expect(out).toContain("dryRun");
     expect(out).toContain("createIssue");
     expect(out).toContain("New issue");
+  });
+
+  it("resolves repeated labels and includes them in the created issue", async () => {
+    const labels = [
+      { id: "label-bug", name: "Bug", teamId: defaultTeam.id },
+      { id: "label-platform", name: "Platform" },
+    ];
+    const { client, spies, issues } = createMockLinear({ labels });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "create",
+      "--title",
+      "Label me",
+      "--team",
+      "ENG",
+      "--label",
+      "bug",
+      "--label=Platform",
+    ]);
+
+    expect(exit).toBe(0);
+    expect(spies.createIssue.calls).toHaveLength(1);
+    expect(spies.createIssue.calls[0][0]).toMatchObject({
+      labelIds: ["label-bug", "label-platform"],
+    });
+    expect(issues[0].labels?.map((label) => label.name)).toEqual([
+      "Bug",
+      "Platform",
+    ]);
+    expect(out).toMatch(/labels:.*Bug.*Platform/);
+  });
+
+  it("resolves an assignee by email before creating", async () => {
+    const bob = { id: "user-2", name: "Bob Smith", email: "bob@example.com" };
+    const { client, spies } = createMockLinear({ users: [defaultViewer, bob] });
+    setLinearClientForTests(client);
+
+    const { exit } = await run([
+      "issue",
+      "create",
+      "--title",
+      "Assign by email",
+      "--team",
+      "ENG",
+      "--assignee",
+      "bob@example.com",
+    ]);
+
+    expect(exit).toBe(0);
+    expect(spies.createIssue.calls[0][0]).toMatchObject({ assigneeId: bob.id });
   });
 });
 
@@ -301,6 +426,103 @@ describe("issue write paths (mocked)", () => {
     expect(spies.updateIssue.calls).toHaveLength(1);
     expect(issues[0].state.type).toBe("completed");
     expect(out).toContain("completed");
+  });
+
+  it("adds and removes labels without replacing unrelated labels", async () => {
+    const labels = [
+      { id: "label-bug", name: "Bug", teamId: defaultTeam.id },
+      { id: "label-ui", name: "UI", teamId: defaultTeam.id },
+      { id: "label-platform", name: "Platform" },
+    ];
+    const { client, spies, issues } = createMockLinear({
+      labels,
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-52",
+          title: "Tagged work",
+          labels: [labels[0], labels[1]],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "update",
+      "ENG-52",
+      "--add-label",
+      "Platform",
+      "--remove-label",
+      "Bug",
+    ]);
+
+    expect(exit).toBe(0);
+    expect(spies.updateIssue.calls).toHaveLength(1);
+    expect(spies.updateIssue.calls[0][1]).toMatchObject({
+      addedLabelIds: ["label-platform"],
+      removedLabelIds: ["label-bug"],
+    });
+    expect(issues[0].labels?.map((label) => label.name)).toEqual(["UI", "Platform"]);
+    expect(out).toMatch(/labels:.*UI.*Platform/);
+  });
+
+  it("rejects an unknown label before writing", async () => {
+    const label = { id: "label-bug", name: "Bug", teamId: defaultTeam.id };
+    const { client, spies } = createMockLinear({
+      labels: [label],
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-53",
+          title: "Already tagged",
+          labels: [label],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "update",
+      "ENG-53",
+      "--add-label",
+      "Bug",
+      "--remove-label",
+      "missing-label",
+    ]);
+
+    expect(exit).toBe(1);
+    expect(out).toContain("NOT_FOUND");
+    expect(spies.updateIssue.calls).toHaveLength(0);
+  });
+
+  it("treats an already-present label as an idempotent no-op", async () => {
+    const label = { id: "label-bug", name: "Bug", teamId: defaultTeam.id };
+    const { client, spies } = createMockLinear({
+      labels: [label],
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-54",
+          title: "Already tagged",
+          labels: [label],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "update",
+      "ENG-54",
+      "--add-label",
+      "Bug",
+    ]);
+
+    expect(exit).toBe(0);
+    expect(out).toContain("no-op");
+    expect(spies.updateIssue.calls).toHaveLength(0);
   });
 });
 

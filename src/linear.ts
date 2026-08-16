@@ -151,6 +151,26 @@ export async function listIssues(opts: {
   });
 }
 
+export async function searchIssues(
+  term: string,
+  opts?: { first?: number; teamId?: string; includeComments?: boolean },
+): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const result = await client.searchIssues(term, {
+      first: opts?.first ?? 20,
+      ...(opts?.teamId ? { teamId: opts.teamId } : {}),
+      ...(opts?.includeComments ? { includeComments: true } : {}),
+    });
+    const nodes = nodesOf(result);
+    return {
+      nodes,
+      totalCount: totalOf(result, nodes.length),
+      hasNextPage: Boolean(result?.pageInfo?.hasNextPage),
+    };
+  });
+}
+
 export async function getIssue(id: string): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
@@ -206,6 +226,66 @@ export async function listTeams(first = 50): Promise<AnyRec[]> {
     const conn = await client.teams({ first });
     return nodesOf(conn);
   });
+}
+
+export async function listIssueLabels(first = 250): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const conn = await client.issueLabels({ first });
+    return nodesOf(conn);
+  });
+}
+
+export async function getIssueLabels(issue: AnyRec): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    if (typeof issue.labels === "function") {
+      return nodesOf(await issue.labels({ first: 100 }));
+    }
+    if (Array.isArray(issue.labels)) return issue.labels;
+    return [];
+  });
+}
+
+export async function resolveLabelIds(
+  values: string[],
+  opts?: { teamId?: string },
+): Promise<string[]> {
+  if (values.length === 0) return [];
+  const labels = await listIssueLabels();
+  const ids: string[] = [];
+
+  for (const value of values) {
+    const wanted = value.toLowerCase();
+    const byId = labels.filter((label) => String(label.id) === value);
+    const byName = labels.filter(
+      (label) =>
+        !label.isGroup && String(label.name ?? "").toLowerCase() === wanted,
+    );
+    let matches = byId.length > 0 ? byId : byName;
+
+    if (byId.length === 0 && opts?.teamId) {
+      const teamScoped = matches.filter(
+        (label) => String(label.teamId ?? "") === opts.teamId,
+      );
+      const workspaceScoped = matches.filter((label) => !label.teamId);
+      matches = teamScoped.length > 0 ? teamScoped : workspaceScoped;
+    }
+
+    if (matches.length === 0) {
+      throw new AxiError(`Label "${value}" not found`, "NOT_FOUND", [
+        "Pass a label name or id available to this workspace/team",
+      ]);
+    }
+    if (matches.length > 1) {
+      const names = matches.map((label) => label.name ?? label.id).join(", ");
+      throw new AxiError(`Ambiguous label "${value}". Matches: ${names}`, "VALIDATION_ERROR", [
+        "Pass the label id instead",
+      ]);
+    }
+    ids.push(String(matches[0].id));
+  }
+
+  return [...new Set(ids)];
 }
 
 export async function resolveTeam(
