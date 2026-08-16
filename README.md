@@ -145,6 +145,9 @@ The field is never omitted. --full is suggested only when truncated.
 
 - No interactive prompts.
 - --dry-run on create / update / comment / close prints the planned mutation and does not write.
+- Dry-run and live writes share locally knowable validation, including Linear's
+  255-character project-description limit. Dry-run cannot predict permissions,
+  concurrent changes, or other validation performed only by Linear's API.
 - Close and update are idempotent: already-in-desired-state is a no-op, exit 0.
 - Create accepts repeatable `--label <name|id>`, optional `--parent <id>`, and direct scheduling fields. Update accepts `--parent <id|none>`, `--cycle <id|none>`, `--estimate <n|none>`, `--due-date <YYYY-MM-DD|none>`, and repeatable `--add-label`/`--remove-label` without replacing unrelated labels.
 - Relation creation accepts exactly one directed relation flag, is idempotent, and supports `--dry-run`.
