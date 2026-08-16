@@ -58,7 +58,14 @@ const TOPICS: Record<string, UsageTopic> = {
         goal: "change fields",
         command: "linear-axi issue update <id> --add-label <name|id> [--remove-label <name|id>]",
       },
-      { goal: "comment", command: "linear-axi issue comment <id> --body \"...\"" },
+      {
+        goal: "comment threads",
+        command: "linear-axi issue comment list <id> [--full]",
+      },
+      {
+        goal: "reply in thread",
+        command: "linear-axi issue comment <id> --reply-to <comment-id> --body \"...\"",
+      },
       { goal: "complete", command: "linear-axi issue close <id> [--dry-run]" },
     ],
     next: [

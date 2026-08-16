@@ -42,6 +42,8 @@ npx -y linear-axi issue update <id> --state <name-or-type> --dry-run
 npx -y linear-axi issue update <id> --add-label "<name|id>" --remove-label "<name|id>"
 npx -y linear-axi issue comment <id> --body "<text>"
 npx -y linear-axi issue comment <id> --body "<text>" --dry-run
+npx -y linear-axi issue comment list <id>
+npx -y linear-axi issue comment <id> --reply-to <comment-id> --body "<text>"
 npx -y linear-axi issue close <id>
 npx -y linear-axi issue close <id> --dry-run
 npx -y linear-axi project list

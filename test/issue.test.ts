@@ -372,6 +372,77 @@ describe("issue comment", () => {
     expect(out).toContain("--body requires text");
     expect(spies.createComment.calls).toHaveLength(0);
   });
+
+  it("lists comments with their thread parent and creates a reply", async () => {
+    const { client, spies, issues } = createMockLinear({
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-8",
+          title: "Threaded discussion",
+          comments: [
+            { id: "c1", body: "Root comment", user: defaultViewer },
+            { id: "c2", body: "Existing reply", parentId: "c1", user: defaultViewer },
+          ],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const listed = await run(["issue", "comment", "list", "ENG-8"]);
+    expect(listed.exit).toBe(0);
+    expect(listed.out).toContain("Root comment");
+    expect(listed.out).toContain("Existing reply");
+    expect(listed.out).toContain("c2,c1,Alice");
+
+    const replied = await run([
+      "issue",
+      "comment",
+      "ENG-8",
+      "--reply-to",
+      "c1",
+      "--body",
+      "New reply",
+    ]);
+    expect(replied.exit).toBe(0);
+    expect(spies.createComment.calls[0][0]).toMatchObject({
+      issueId: "i1",
+      parentId: "c1",
+      body: "New reply",
+    });
+    expect(issues[0].comments?.at(-1)).toMatchObject({
+      body: "New reply",
+      parentId: "c1",
+    });
+    expect(replied.out).toContain("replyTo: c1");
+  });
+
+  it("rejects a reply target outside the issue before writing", async () => {
+    const { client, spies } = createMockLinear({
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-8",
+          title: "Threaded discussion",
+          comments: [{ id: "c1", body: "Root comment" }],
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "comment",
+      "ENG-8",
+      "--reply-to",
+      "other-comment",
+      "--body",
+      "Unsafe reply",
+    ]);
+    expect(exit).toBe(1);
+    expect(out).toContain("NOT_FOUND");
+    expect(spies.createComment.calls).toHaveLength(0);
+  });
 });
 
 describe("issue create write path (mocked)", () => {
