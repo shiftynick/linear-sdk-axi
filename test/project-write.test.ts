@@ -155,6 +155,113 @@ describe("project writes", () => {
     expect(spies.createProject.calls).toHaveLength(0);
   });
 
+  it.each([false, true])(
+    "rejects overlong project descriptions before create (dry-run=%s)",
+    async (dryRun) => {
+      const { client, spies } = createMockLinear();
+      setLinearClientForTests(client);
+      const args = [
+        "project",
+        "create",
+        "--name",
+        "Invalid description",
+        "--team",
+        "ENG",
+        "--description",
+        "x".repeat(256),
+      ];
+      if (dryRun) args.push("--dry-run");
+
+      const { out, exit } = await run(args);
+
+      expect(exit).toBe(2);
+      expect(out).toContain("project description must be 255 characters or fewer");
+      expect(out).toContain("received 256");
+      expect(spies.createProject.calls).toHaveLength(0);
+    },
+  );
+
+  it.each([false, true])(
+    "rejects overlong project descriptions before update (dry-run=%s)",
+    async (dryRun) => {
+      const { client, spies } = createMockLinear({
+        projects: [{
+          id: "project-1",
+          name: "Launch CLI",
+          description: "Initial scope",
+          teamIds: [defaultTeam.id],
+        }],
+      });
+      setLinearClientForTests(client);
+      const args = [
+        "project",
+        "update",
+        "project-1",
+        "--description",
+        "x".repeat(256),
+      ];
+      if (dryRun) args.push("--dry-run");
+
+      const { out, exit } = await run(args);
+
+      expect(exit).toBe(2);
+      expect(out).toContain("project description must be 255 characters or fewer");
+      expect(spies.updateProject.calls).toHaveLength(0);
+    },
+  );
+
+  it.each([false, true])(
+    "accepts a project description at the 255-character boundary (dry-run=%s)",
+    async (dryRun) => {
+      const { client, spies } = createMockLinear();
+      setLinearClientForTests(client);
+      const args = [
+        "project",
+        "create",
+        "--name",
+        "Boundary description",
+        "--team",
+        "ENG",
+        "--description",
+        "x".repeat(255),
+      ];
+      if (dryRun) args.push("--dry-run");
+
+      const { exit } = await run(args);
+
+      expect(exit).toBe(0);
+      expect(spies.createProject.calls).toHaveLength(dryRun ? 0 : 1);
+    },
+  );
+
+  it.each([false, true])(
+    "accepts an updated project description at the 255-character boundary (dry-run=%s)",
+    async (dryRun) => {
+      const { client, spies } = createMockLinear({
+        projects: [{
+          id: "project-1",
+          name: "Launch CLI",
+          description: "Initial scope",
+          teamIds: [defaultTeam.id],
+        }],
+      });
+      setLinearClientForTests(client);
+      const args = [
+        "project",
+        "update",
+        "project-1",
+        "--description",
+        "x".repeat(255),
+      ];
+      if (dryRun) args.push("--dry-run");
+
+      const { exit } = await run(args);
+
+      expect(exit).toBe(0);
+      expect(spies.updateProject.calls).toHaveLength(dryRun ? 0 : 1);
+    },
+  );
+
   it("lists project statuses before a status write", async () => {
     const { client } = createMockLinear({
       projectStatuses: [

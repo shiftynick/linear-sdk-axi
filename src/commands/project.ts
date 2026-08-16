@@ -35,6 +35,7 @@ import {
   renderOutput,
   type FieldDef,
 } from "../toon.js";
+import { assertMaxLength, LINEAR_LIMITS } from "../validation.js";
 
 export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|create|update> [id]
 List, view, create, or update Linear projects.
@@ -321,6 +322,11 @@ async function createProjectCommand(
     required: false,
     inlineFlags: ["--body", "--description"],
   });
+  assertMaxLength(
+    description,
+    LINEAR_LIMITS.projectDescription,
+    "project description",
+  );
   const statusRaw = optionalFlagArg(args, "--status");
   const priority = parsePriority(optionalFlagArg(args, "--priority"));
   const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", false);
@@ -369,6 +375,11 @@ async function updateProjectCommand(
     required: false,
     inlineFlags: ["--body", "--description"],
   });
+  assertMaxLength(
+    description,
+    LINEAR_LIMITS.projectDescription,
+    "project description",
+  );
   const statusRaw = optionalFlagArg(args, "--status");
   const priority = parsePriority(optionalFlagArg(args, "--priority"));
   const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", true);
