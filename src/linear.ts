@@ -195,6 +195,78 @@ export async function getIssue(id: string): Promise<AnyRec> {
   });
 }
 
+export async function getIssueParent(issue: AnyRec): Promise<AnyRec | undefined> {
+  return withLinearErrors(async () => {
+    const parent = await awaitRel(issue.parent);
+    if (!parent?.id) return undefined;
+    return getIssue(String(parent.id));
+  });
+}
+
+export async function getIssueChildren(issue: AnyRec, first = 50): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    if (typeof issue.children !== "function") return [];
+    const children = nodesOf(await issue.children({ first }));
+    return Promise.all(
+      children.map(async (child) =>
+        child?.id ? getIssue(String(child.id)) : child,
+      ),
+    );
+  });
+}
+
+export type HydratedIssueRelation = {
+  id: string;
+  type: string;
+  direction: "outgoing" | "incoming";
+  issue: HydratedIssue;
+};
+
+async function hydrateIssueRelations(
+  conn: AnyRec | undefined,
+  direction: "outgoing" | "incoming",
+): Promise<HydratedIssueRelation[]> {
+  return Promise.all(
+    nodesOf(conn).map(async (relation) => {
+      const related = await awaitRel(
+        direction === "outgoing" ? relation.relatedIssue : relation.issue,
+      );
+      const relatedId = related?.id ??
+        (direction === "outgoing" ? relation.relatedIssueId : relation.issueId);
+      if (!relatedId) {
+        throw new AxiError("Issue relation is missing a related issue", "UNKNOWN");
+      }
+      return {
+        id: String(relation.id ?? ""),
+        type: String(relation.type ?? "unknown").toLowerCase(),
+        direction,
+        issue: await hydrateIssue(await getIssue(String(relatedId))),
+      };
+    }),
+  );
+}
+
+export async function getIssueRelations(
+  issue: AnyRec,
+  first = 50,
+): Promise<HydratedIssueRelation[]> {
+  return withLinearErrors(async () => {
+    const [outgoing, incoming] = await Promise.all([
+      typeof issue.relations === "function"
+        ? issue.relations({ first })
+        : undefined,
+      typeof issue.inverseRelations === "function"
+        ? issue.inverseRelations({ first })
+        : undefined,
+    ]);
+    const [direct, inverse] = await Promise.all([
+      hydrateIssueRelations(outgoing, "outgoing"),
+      hydrateIssueRelations(incoming, "incoming"),
+    ]);
+    return [...direct, ...inverse];
+  });
+}
+
 export async function getIssueComments(
   issue: AnyRec,
   first = 50,
@@ -590,6 +662,18 @@ export async function createIssue(input: AnyRec): Promise<AnyRec> {
       throw new AxiError("Issue create returned no issue", "UNKNOWN");
     }
     return issue;
+  });
+}
+
+export async function createIssueRelation(input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const payload = await client.createIssueRelation(input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to create issue relation", "UNKNOWN");
+    }
+    const relation = await awaitRel(payload?.issueRelation);
+    return relation ?? input;
   });
 }
 
