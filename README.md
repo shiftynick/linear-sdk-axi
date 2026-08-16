@@ -131,9 +131,30 @@ Use `linear-sdk-axi usage` for the compact capability map, then `linear-sdk-axi 
 (or `label`, `project`, `cycle`, `team`, `account`, `auth`, or `setup`) for exact command forms. This is the
 preferred discovery path; reserve `--help` for exhaustive flag detail.
 
-## TOON output
+## Output formats
 
-Internal logic stays on JSON. stdout is TOON via @toon-format/toon encode().
+TOON remains the default. Pass `--output json` (or `--output=json`) after a
+command to emit exactly one JSON value. `--output toon` is the explicit form of
+the default.
+
+JSON uses a versioned CLI-owned envelope rather than raw Linear SDK objects:
+
+```json
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "issue list",
+  "data": { "issues": [] },
+  "help": []
+}
+```
+
+Errors replace `data` with `error: { code, message, help? }`. Empty collections
+are arrays. Help and version output use the same envelope. Within schema version
+1, fields may be added, but existing field meanings and types will not change;
+a breaking JSON contract change requires a new `schemaVersion`.
+
+Internal logic stays on JSON. Default stdout is TOON via @toon-format/toon encode().
 Default list schemas are 3-4 fields (identifier, title, state, team).
 Use --fields on issue list for extras (url, assignee, description, stateType, commentCount, id).
 Empty lists are explicit, never blank: issues: 0 assigned issues
@@ -180,6 +201,7 @@ The field is never omitted. --full is suggested only when truncated.
 - 2 = usage error (VALIDATION_ERROR, unknown command/flag)
 
 Errors go to stdout as TOON (error, code, help). Never mix progress into stdout.
+With `--output json`, the same rule applies to the single JSON envelope.
 
 `linear-sdk-axi doctor` is read-only. It verifies the configured credential by loading the
 viewer, workspace, and accessible teams. Missing, invalid, or under-scoped keys
