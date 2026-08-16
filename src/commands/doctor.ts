@@ -9,12 +9,12 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const DOCTOR_HELP = `usage: linear-axi doctor
+export const DOCTOR_HELP = `usage: linear-sdk-axi doctor
 Verify Linear authentication and report read-only workspace access.
 
 flags: --help
 examples:
-  linear-axi doctor
+  linear-sdk-axi doctor
 `;
 
 const teamSchema: FieldDef[] = [field("key"), field("name")];
@@ -61,7 +61,7 @@ export async function doctorCommand(args: string[]): Promise<string> {
     ),
     renderHelp([
       "Authentication verified with read-only Linear calls",
-      "Run `linear-axi status --team <key>` to inspect a team's workflow states",
+      "Run `linear-sdk-axi status --team <key>` to inspect a team's workflow states",
     ]),
   ]);
 }

@@ -302,6 +302,73 @@ describe("issue create", () => {
     expect(exit).toBe(0);
     expect(spies.createIssue.calls[0][0]).toMatchObject({ assigneeId: bob.id });
   });
+
+  it("plans cycle, priority, estimate, and due date with strict values", async () => {
+    const cycle = {
+      id: "cycle-eng-1",
+      name: "Reliability",
+      team: defaultTeam,
+    };
+    const { client, spies } = createMockLinear({ cycles: [cycle] });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue",
+      "create",
+      "--title",
+      "Scheduled issue",
+      "--team",
+      "ENG",
+      "--cycle",
+      cycle.id,
+      "--priority",
+      "2",
+      "--estimate",
+      "3",
+      "--due-date",
+      "2026-09-01",
+      "--dry-run",
+    ]);
+
+    expect(exit).toBe(0);
+    expect(spies.createIssue.calls).toHaveLength(0);
+    expect(out).toContain("cycleId: cycle-eng-1");
+    expect(out).toContain("priority: 2");
+    expect(out).toContain("estimate: 3");
+    expect(out).toContain("dueDate: 2026-09-01");
+  });
+
+  it("rejects an invalid due date and priority before writing", async () => {
+    const { client, spies } = createMockLinear();
+    setLinearClientForTests(client);
+
+    const invalidPriority = await run([
+      "issue",
+      "create",
+      "--title",
+      "Bad priority",
+      "--team",
+      "ENG",
+      "--priority",
+      "5",
+    ]);
+    const invalidDate = await run([
+      "issue",
+      "create",
+      "--title",
+      "Bad date",
+      "--team",
+      "ENG",
+      "--due-date",
+      "2026-02-30",
+    ]);
+
+    expect(invalidPriority.exit).toBe(2);
+    expect(invalidPriority.out).toContain("--priority");
+    expect(invalidDate.exit).toBe(2);
+    expect(invalidDate.out).toContain("valid calendar date");
+    expect(spies.createIssue.calls).toHaveLength(0);
+  });
 });
 
 describe("issue close", () => {
@@ -346,6 +413,44 @@ describe("issue update", () => {
     expect(exit).toBe(0);
     expect(out).toMatch(/no-op|desired state/i);
     expect(spies.updateIssue.calls.length).toBe(0);
+  });
+
+  it("updates and clears scheduling fields idempotently", async () => {
+    const issue = makeIssue({
+      id: "i-scheduled",
+      identifier: "ENG-88",
+      title: "Scheduled",
+      cycleId: "cycle-eng-1",
+      priority: 2,
+      estimate: 5,
+      dueDate: "2026-09-01",
+    });
+    const { client, spies, issues } = createMockLinear({ issues: [issue] });
+    setLinearClientForTests(client);
+
+    const cleared = await run([
+      "issue",
+      "update",
+      "ENG-88",
+      "--cycle",
+      "none",
+      "--estimate",
+      "none",
+      "--due-date",
+      "none",
+    ]);
+    expect(cleared.exit).toBe(0);
+    expect(spies.updateIssue.calls[0][1]).toMatchObject({
+      cycleId: null,
+      estimate: null,
+      dueDate: null,
+    });
+    expect(issues[0]).toMatchObject({ cycleId: null, estimate: null, dueDate: null });
+
+    const noOp = await run(["issue", "update", "ENG-88", "--priority", "2"]);
+    expect(noOp.exit).toBe(0);
+    expect(noOp.out).toMatch(/no-op|desired state/i);
+    expect(spies.updateIssue.calls).toHaveLength(1);
   });
 });
 

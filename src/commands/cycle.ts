@@ -19,17 +19,17 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const CYCLE_HELP = `usage: linear-axi cycle <list|view> [id]
+export const CYCLE_HELP = `usage: linear-sdk-axi cycle <list|view> [id]
 Read-only Linear cycles.
 
 subcommands: list, view <id>
 flags{list}: --team <key>, --limit (default 20), --help
 flags{view}: --team <key>, --full, --help
 examples:
-  linear-axi cycle list
-  linear-axi cycle list --team ENG
-  linear-axi cycle view <id>
-  linear-axi cycle view <id> --full
+  linear-sdk-axi cycle list
+  linear-sdk-axi cycle list --team ENG
+  linear-sdk-axi cycle view <id>
+  linear-sdk-axi cycle view <id> --full
 `;
 
 const listSchema: FieldDef[] = [
@@ -65,7 +65,7 @@ export async function cycleCommand(
   if (!sub || sub === "list") return listCyclesCommand(args, ctx);
   if (sub === "view") return viewCycleCommand(args, ctx);
   throw new AxiError(`Unknown cycle subcommand: ${sub}`, "VALIDATION_ERROR", [
-    "Run `linear-axi cycle --help`",
+    "Run `linear-sdk-axi cycle --help`",
   ]);
 }
 
@@ -86,11 +86,11 @@ async function listCyclesCommand(
   }));
   const suffix = teamFlagSuffix(ctx);
   const help = [
-    `Run \`linear-axi cycle view <id>${suffix}\` for dates and description`,
+    `Run \`linear-sdk-axi cycle view <id>${suffix}\` for dates and description`,
   ];
   if (result.hasNextPage || result.totalCount > limit) {
     help.unshift(
-      `Run \`linear-axi cycle list --limit ${Math.max(limit * 2, 50)}${suffix}\` to see more`,
+      `Run \`linear-sdk-axi cycle list --limit ${Math.max(limit * 2, 50)}${suffix}\` to see more`,
     );
   }
   return renderOutput([
@@ -121,11 +121,11 @@ async function viewCycleCommand(
     description: full ? cycle.description : truncateBody(cycle.description, 500),
   };
   const help = [
-    `Run \`linear-axi issue list${suffix}\` to list issues`,
+    `Run \`linear-sdk-axi issue list${suffix}\` to list issues`,
   ];
   if (truncated) {
     help.unshift(
-      `Run \`linear-axi cycle view ${cycle.id} --full${suffix}\` to see complete description`,
+      `Run \`linear-sdk-axi cycle view ${cycle.id} --full${suffix}\` to see complete description`,
     );
   }
   return renderOutput([
