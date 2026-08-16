@@ -75,8 +75,15 @@ export async function main(options: MainOptions = {}): Promise<void> {
     commands: COMMANDS,
     getCommandHelp: (command) => COMMAND_HELP[command],
     resolveContext: ({ args }) => {
-      const { teamKey } = parseTeamArgs(args);
-      return teamKey ? { teamKey } : {};
+      try {
+        const { teamKey } = parseTeamArgs(args);
+        return teamKey ? { teamKey } : {};
+      } catch {
+        // Command handlers parse the same context through withTeamContext().
+        // Let that path surface a structured CLI error rather than throwing
+        // before runAxiCli's error boundary is active.
+        return {};
+      }
     },
   });
 }

@@ -31,6 +31,7 @@ function isMissingValue(value: string | undefined): boolean {
 
 function isValueBoundary(arg: string | undefined, flags: string[]): boolean {
   if (arg === undefined) return false;
+  if (arg.startsWith("--")) return true;
   return flags.some((flag) => arg === flag || arg.startsWith(`${flag}=`));
 }
 

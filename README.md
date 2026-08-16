@@ -68,6 +68,27 @@ The field is never omitted. --full is suggested only when truncated.
 
 Errors go to stdout as TOON (error, code, help). Never mix progress into stdout.
 
+## Verification
+
+Run the full local suite with `npm test`. It compiles the CLI first, then covers
+the command layer with a mocked Linear client and launches the compiled binary
+for no-key version/authentication smoke tests.
+
+Two opt-in, read-only live checks cover `me` and `team list`. They run only
+when both `LINEAR_API_KEY` is present and `LINEAR_AXI_LIVE_TEST=1`; normal
+tests never contact Linear and no live test creates, updates, comments on, or
+closes an issue.
+
+PowerShell example:
+
+```powershell
+$env:LINEAR_AXI_LIVE_TEST = "1"
+npm test
+```
+
+Set the API key through your shell or secret manager before running this. Do
+not put it in source control or paste it into chat.
+
 ## Ambient context
 
 Two complementary paths — install either or both:

@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/bin/linear-axi.js",
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "dev": "tsx bin/linear-axi.ts"
   },
   "license": "MIT",
