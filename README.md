@@ -29,11 +29,13 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | --- | --- |
 | linear-axi | Live dashboard: me, assigned issues (~20), counts by workflow state type |
 | linear-axi usage [topic] | Two-tier command map: overview, then exact forms for a topic |
-| linear-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team) |
+| linear-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team); `--unblocked` excludes blocked work |
 | linear-axi issue search <query> | Full-text issue search; optional team scope and comment text |
-| linear-axi issue view <id> | Issue detail. Truncated description. --full, --comments |
-| linear-axi issue create --title | Create. --team required unless only one team. Repeat `--label`. --dry-run |
-| linear-axi issue update <id> | Update fields or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
+| linear-axi issue view <id> | Issue detail and parent. Truncated description. `--full`, `--comments`, `--sub-issues` |
+| linear-axi issue create --title | Create. --team required unless only one team. Optional `--parent`; repeat `--label`. --dry-run |
+| linear-axi issue update <id> | Update fields, `--parent <id|none>`, or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
+| linear-axi issue relation list <id> | List outgoing and incoming issue relations |
+| linear-axi issue relation add <id> | Add `--blocks`, `--blocked-by`, `--related`, or `--duplicate-of` relation. Idempotent; `--dry-run` |
 | linear-axi issue comment list <id> | List comments with thread parent IDs. --full for complete text |
 | linear-axi issue comment <id> --body | Comment or reply with `--reply-to <comment-id>`. --body-file and --dry-run allowed |
 | linear-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
@@ -74,7 +76,8 @@ The field is never omitted. --full is suggested only when truncated.
 - No interactive prompts.
 - --dry-run on create / update / comment / close prints the planned mutation and does not write.
 - Close and update are idempotent: already-in-desired-state is a no-op, exit 0.
-- Create accepts repeatable `--label <name|id>`; update accepts repeatable `--add-label` and `--remove-label` without replacing unrelated labels.
+- Create accepts repeatable `--label <name|id>` and optional `--parent <id>`; update accepts `--parent <id|none>` and repeatable `--add-label`/`--remove-label` without replacing unrelated labels.
+- Relation creation accepts exactly one directed relation flag, is idempotent, and supports `--dry-run`.
 - Unknown flags fail loud (VALIDATION_ERROR) and list valid flags inline.
 
 ## Exit codes

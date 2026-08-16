@@ -41,6 +41,7 @@ const TOPICS: Record<string, UsageTopic> = {
     summary: "Find, inspect, create, update, discuss, or complete issues",
     entries: [
       { goal: "my open work", command: "linear-axi issue list" },
+      { goal: "my unblocked work", command: "linear-axi issue list --unblocked" },
       {
         goal: "full-text search",
         command: "linear-axi issue search \"...\" [--team <key>] [--comments]",
@@ -49,14 +50,25 @@ const TOPICS: Record<string, UsageTopic> = {
         goal: "team or state slice",
         command: "linear-axi issue list --team <key> --state <name|type>",
       },
-      { goal: "inspect", command: "linear-axi issue view <id> [--comments] [--full]" },
+      {
+        goal: "inspect hierarchy",
+        command: "linear-axi issue view <id> [--comments] [--sub-issues] [--full]",
+      },
       {
         goal: "create safely",
-        command: "linear-axi issue create --title \"...\" --team <key> --label <name|id> --dry-run",
+        command: "linear-axi issue create --title \"...\" --team <key> [--parent <id>] --label <name|id> --dry-run",
       },
       {
         goal: "change fields",
-        command: "linear-axi issue update <id> --add-label <name|id> [--remove-label <name|id>]",
+        command: "linear-axi issue update <id> [--parent <id|none>] --add-label <name|id> [--remove-label <name|id>]",
+      },
+      {
+        goal: "inspect relations",
+        command: "linear-axi issue relation list <id>",
+      },
+      {
+        goal: "add relation safely",
+        command: "linear-axi issue relation add <id> --blocks <id> --dry-run",
       },
       {
         goal: "comment threads",
