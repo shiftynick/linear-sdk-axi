@@ -85,6 +85,8 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-sdk-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-sdk-axi project list | Projects: name, state, progress |
 | linear-sdk-axi project view <id> | Project detail. Truncated description. --full |
+| linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, priority, start/target dates. --dry-run |
+| linear-sdk-axi project update <id> | Update name, description, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
 | linear-sdk-axi cycle list | Read-only cycles: id, name, state, progress. Optional `--team` |
 | linear-sdk-axi cycle view <id> | Cycle timing and description. `--full` for complete text |
 | linear-sdk-axi team list | Teams: key, name, issue count |
@@ -123,6 +125,7 @@ The field is never omitted. --full is suggested only when truncated.
 - Close and update are idempotent: already-in-desired-state is a no-op, exit 0.
 - Create accepts repeatable `--label <name|id>`, optional `--parent <id>`, and direct scheduling fields. Update accepts `--parent <id|none>`, `--cycle <id|none>`, `--estimate <n|none>`, `--due-date <YYYY-MM-DD|none>`, and repeatable `--add-label`/`--remove-label` without replacing unrelated labels.
 - Relation creation accepts exactly one directed relation flag, is idempotent, and supports `--dry-run`.
+- Project create/update supports `--dry-run`; updates are idempotent and can clear `--start-date` or `--target-date` with `none`.
 - Unknown flags fail loud (VALIDATION_ERROR) and list valid flags inline.
 
 ## Exit codes
@@ -180,9 +183,9 @@ This project deliberately stays direct-SDK and npx-friendly. It now carries the
 high-frequency agent work that is absent or less ergonomic upstream: two-tier
 usage discovery, full-text issue search, name/email assignee resolution,
 labels, scheduling fields, parent/sub-issues, relations, unblocked filtering,
-threaded comments, read-only cycles, and OAuth/API-key auth.
+threaded comments, read-only cycles, project create/update, and OAuth/API-key auth.
 
-The upstream MCP CLI also has project/document/milestone write commands and
+The upstream MCP CLI also has document/milestone write commands and
 repository-level `.linear-project` defaults. Those are useful but more
 opinionated workflow layers; they remain future candidates rather than being
 ported blindly. Self-update is intentionally excluded because `npx` provides

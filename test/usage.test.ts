@@ -46,6 +46,14 @@ describe("usage map", () => {
     expect(out).toContain("--dry-run");
   });
 
+  it("includes safe project write forms in the project tier", async () => {
+    const { out, exit } = await run(["usage", "project"]);
+    expect(exit).toBe(0);
+    expect(out).toContain("linear-sdk-axi project create");
+    expect(out).toContain("linear-sdk-axi project update");
+    expect(out).toContain("--dry-run");
+  });
+
   it("rejects an unknown or extra topic with a structured usage error", async () => {
     for (const argv of [
       ["usage", "unknown"],
