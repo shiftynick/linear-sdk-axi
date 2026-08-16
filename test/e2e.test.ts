@@ -1,15 +1,23 @@
 import { spawnSync } from "node:child_process";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const binary = fileURLToPath(new URL("../dist/bin/linear-axi.js", import.meta.url));
+const binary = fileURLToPath(new URL("../dist/bin/linear-sdk-axi.js", import.meta.url));
 
 function runBinary(args: string[]) {
-  const { LINEAR_API_KEY: _ignored, ...env } = process.env;
+  const {
+    LINEAR_API_KEY: _ignored,
+    LINEAR_SDK_AXI_AUTH_FILE: _ignoredAuthFile,
+    ...env
+  } = process.env;
   return spawnSync(process.execPath, [binary, ...args], {
     cwd: root,
-    env,
+    env: {
+      ...env,
+      LINEAR_SDK_AXI_AUTH_FILE: join(root, ".linear-sdk-axi-oauth-e2e-missing.json"),
+    },
     encoding: "utf8",
   });
 }
@@ -19,6 +27,14 @@ describe("compiled CLI", () => {
     const result = runBinary(["--version"]);
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe("0.1.0");
+    expect(result.stderr).toBe("");
+  });
+
+  it("prints the usage map without a Linear API key", () => {
+    const result = runBinary(["usage", "issue"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("tier: issue");
+    expect(result.stdout).toContain("linear-sdk-axi issue create");
     expect(result.stderr).toBe("");
   });
 

@@ -58,9 +58,9 @@ export async function homeCommand(): Promise<string> {
       },
     }),
     renderHelp([
-      "Run `linear-axi issue view <id>` for details",
-      "Run `linear-axi issue list --team <key>` to list a team",
-      "Run `linear-axi setup hooks` to install session hooks",
+      "Run `linear-sdk-axi issue view <id>` for details",
+      "Run `linear-sdk-axi issue list --team <key>` to list a team",
+      "Run `linear-sdk-axi setup hooks` to install session hooks",
     ]),
   ];
 

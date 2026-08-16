@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const { installSessionStartHooks } = vi.hoisted(() => ({
   installSessionStartHooks: vi.fn(),
@@ -22,6 +24,9 @@ import {
   stateByType,
 } from "./mock.js";
 
+let originalApiKey: string | undefined;
+let originalAuthFile: string | undefined;
+
 function capture() {
   const chunks: string[] = [];
   return {
@@ -44,11 +49,22 @@ async function run(argv: string[]): Promise<{ out: string; exit: number }> {
 
 beforeEach(() => {
   process.exitCode = undefined;
+  originalApiKey = process.env.LINEAR_API_KEY;
+  originalAuthFile = process.env.LINEAR_SDK_AXI_AUTH_FILE;
+  delete process.env.LINEAR_API_KEY;
+  process.env.LINEAR_SDK_AXI_AUTH_FILE = join(
+    tmpdir(),
+    `linear-sdk-axi-cli-test-${process.pid}-${Date.now()}.json`,
+  );
 });
 
 afterEach(() => {
   setLinearClientForTests(undefined);
   process.exitCode = undefined;
+  if (originalApiKey === undefined) delete process.env.LINEAR_API_KEY;
+  else process.env.LINEAR_API_KEY = originalApiKey;
+  if (originalAuthFile === undefined) delete process.env.LINEAR_SDK_AXI_AUTH_FILE;
+  else process.env.LINEAR_SDK_AXI_AUTH_FILE = originalAuthFile;
 });
 
 describe("version fast path", () => {
@@ -96,6 +112,7 @@ describe("help and unknown input", () => {
     expect(out).toContain("team");
     expect(out).toContain("me");
     expect(out).toContain("status");
+    expect(out).toContain("auth");
     expect(out).toContain("setup");
   });
 
@@ -132,6 +149,23 @@ describe("help and unknown input", () => {
     expect(exit).toBe(2);
     expect(out).toContain("VALIDATION_ERROR");
     expect(out).toMatch(/unknown setup action/i);
+  });
+});
+
+describe("OAuth auth commands", () => {
+  it("reports unconfigured auth without requiring a Linear connection", async () => {
+    const { out, exit } = await run(["auth", "status"]);
+    expect(exit).toBe(0);
+    expect(out).toContain("method: none");
+    expect(out).toContain("oauthConfigured: no");
+    expect(out).not.toMatch(/accessToken|refreshToken/i);
+  });
+
+  it("requires an OAuth client id before starting login", async () => {
+    const { out, exit } = await run(["auth", "login"]);
+    expect(exit).toBe(2);
+    expect(out).toContain("OAuth client id is required");
+    expect(out).toContain("LINEAR_SDK_AXI_OAUTH_CLIENT_ID");
   });
 });
 
@@ -242,8 +276,8 @@ describe("setup hooks", () => {
     const { out, exit } = await run(["setup", "hooks"]);
     expect(exit).toBe(0);
     expect(installSessionStartHooks).toHaveBeenCalledWith({
-      marker: "linear-axi",
-      binaryNames: ["linear-axi"],
+      marker: "linear-sdk-axi",
+      binaryNames: ["linear-sdk-axi"],
     });
     expect(out).toContain("installed");
   });

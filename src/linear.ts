@@ -54,6 +54,10 @@ export type HydratedIssue = {
   assigneeEmail: string | undefined;
   projectId: string | undefined;
   projectName: string | undefined;
+  cycleId: string | undefined;
+  priority: number | null;
+  estimate: number | null;
+  dueDate: string | null;
   raw: AnyRec;
 };
 
@@ -93,6 +97,10 @@ export async function hydrateIssue(issue: AnyRec): Promise<HydratedIssue> {
     assigneeEmail: assignee?.email ? String(assignee.email) : undefined,
     projectId: project?.id ? String(project.id) : undefined,
     projectName: project?.name ? String(project.name) : undefined,
+    cycleId: issue.cycleId ? String(issue.cycleId) : undefined,
+    priority: typeof issue.priority === "number" ? issue.priority : null,
+    estimate: typeof issue.estimate === "number" ? issue.estimate : null,
+    dueDate: typeof issue.dueDate === "string" ? issue.dueDate : null,
     raw: issue,
   };
 }
@@ -151,6 +159,26 @@ export async function listIssues(opts: {
   });
 }
 
+export async function searchIssues(
+  term: string,
+  opts?: { first?: number; teamId?: string; includeComments?: boolean },
+): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const result = await client.searchIssues(term, {
+      first: opts?.first ?? 20,
+      ...(opts?.teamId ? { teamId: opts.teamId } : {}),
+      ...(opts?.includeComments ? { includeComments: true } : {}),
+    });
+    const nodes = nodesOf(result);
+    return {
+      nodes,
+      totalCount: totalOf(result, nodes.length),
+      hasNextPage: Boolean(result?.pageInfo?.hasNextPage),
+    };
+  });
+}
+
 export async function getIssue(id: string): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
@@ -168,10 +196,82 @@ export async function getIssue(id: string): Promise<AnyRec> {
     const issue = nodesOf(conn)[0];
     if (!issue) {
       throw new AxiError(`Issue ${id} not found`, "NOT_FOUND", [
-        "Run `linear-axi issue list` to see assigned issues",
+        "Run `linear-sdk-axi issue list` to see assigned issues",
       ]);
     }
     return issue;
+  });
+}
+
+export async function getIssueParent(issue: AnyRec): Promise<AnyRec | undefined> {
+  return withLinearErrors(async () => {
+    const parent = await awaitRel(issue.parent);
+    if (!parent?.id) return undefined;
+    return getIssue(String(parent.id));
+  });
+}
+
+export async function getIssueChildren(issue: AnyRec, first = 50): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    if (typeof issue.children !== "function") return [];
+    const children = nodesOf(await issue.children({ first }));
+    return Promise.all(
+      children.map(async (child) =>
+        child?.id ? getIssue(String(child.id)) : child,
+      ),
+    );
+  });
+}
+
+export type HydratedIssueRelation = {
+  id: string;
+  type: string;
+  direction: "outgoing" | "incoming";
+  issue: HydratedIssue;
+};
+
+async function hydrateIssueRelations(
+  conn: AnyRec | undefined,
+  direction: "outgoing" | "incoming",
+): Promise<HydratedIssueRelation[]> {
+  return Promise.all(
+    nodesOf(conn).map(async (relation) => {
+      const related = await awaitRel(
+        direction === "outgoing" ? relation.relatedIssue : relation.issue,
+      );
+      const relatedId = related?.id ??
+        (direction === "outgoing" ? relation.relatedIssueId : relation.issueId);
+      if (!relatedId) {
+        throw new AxiError("Issue relation is missing a related issue", "UNKNOWN");
+      }
+      return {
+        id: String(relation.id ?? ""),
+        type: String(relation.type ?? "unknown").toLowerCase(),
+        direction,
+        issue: await hydrateIssue(await getIssue(String(relatedId))),
+      };
+    }),
+  );
+}
+
+export async function getIssueRelations(
+  issue: AnyRec,
+  first = 50,
+): Promise<HydratedIssueRelation[]> {
+  return withLinearErrors(async () => {
+    const [outgoing, incoming] = await Promise.all([
+      typeof issue.relations === "function"
+        ? issue.relations({ first })
+        : undefined,
+      typeof issue.inverseRelations === "function"
+        ? issue.inverseRelations({ first })
+        : undefined,
+    ]);
+    const [direct, inverse] = await Promise.all([
+      hydrateIssueRelations(outgoing, "outgoing"),
+      hydrateIssueRelations(incoming, "incoming"),
+    ]);
+    return [...direct, ...inverse];
   });
 }
 
@@ -193,7 +293,9 @@ export async function getIssueComments(
         id: node.id,
         body: typeof node.body === "string" ? node.body : "",
         author: user?.name ?? user?.displayName ?? user?.email ?? null,
+        parentId: node.parentId ?? null,
         createdAt: node.createdAt ?? null,
+        resolvedAt: node.resolvedAt ?? null,
       });
     }
     return hydrated;
@@ -206,6 +308,157 @@ export async function listTeams(first = 50): Promise<AnyRec[]> {
     const conn = await client.teams({ first });
     return nodesOf(conn);
   });
+}
+
+export type HydratedCycle = {
+  id: string;
+  number: number | null;
+  name: string;
+  description: string;
+  progress: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  state: string;
+  team: string | null;
+  teamKey: string | null;
+  raw: AnyRec;
+};
+
+export async function hydrateCycle(cycle: AnyRec): Promise<HydratedCycle> {
+  const team = await awaitRel(cycle.team);
+  const state = cycle.isActive
+    ? "active"
+    : cycle.isNext
+      ? "next"
+      : cycle.isPrevious
+        ? "previous"
+        : cycle.isFuture
+          ? "future"
+          : cycle.isPast
+            ? "past"
+            : "unknown";
+  return {
+    id: String(cycle.id ?? ""),
+    number: typeof cycle.number === "number" ? cycle.number : null,
+    name: typeof cycle.name === "string" ? cycle.name : "",
+    description: typeof cycle.description === "string" ? cycle.description : "",
+    progress: typeof cycle.progress === "number" ? cycle.progress : null,
+    startsAt: typeof cycle.startsAt === "string" ? cycle.startsAt : null,
+    endsAt: typeof cycle.endsAt === "string" ? cycle.endsAt : null,
+    state,
+    team: team?.name ? String(team.name) : team?.key ? String(team.key) : null,
+    teamKey: team?.key ? String(team.key) : null,
+    raw: cycle,
+  };
+}
+
+export async function listCycles(opts?: {
+  first?: number;
+  team?: AnyRec;
+}): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+  return withLinearErrors(async () => {
+    const first = opts?.first ?? 20;
+    const scopedTeam =
+      opts?.team && typeof opts.team.cycles !== "function" && opts.team.id
+        ? await getLinearClient().team(String(opts.team.id))
+        : opts?.team;
+    const conn =
+      scopedTeam && typeof scopedTeam.cycles === "function"
+        ? await scopedTeam.cycles({ first })
+        : await getLinearClient().cycles({ first });
+    const nodes = nodesOf(conn);
+    return {
+      nodes,
+      totalCount: totalOf(conn, nodes.length),
+      hasNextPage: Boolean(conn?.pageInfo?.hasNextPage),
+    };
+  });
+}
+
+export async function getCycle(id: string): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const cycle = await getLinearClient().cycle(id);
+    if (!cycle?.id) {
+      throw new AxiError(`Cycle ${id} not found`, "NOT_FOUND", [
+        "Run `linear-sdk-axi cycle list` to see available cycles",
+      ]);
+    }
+    return cycle;
+  });
+}
+
+/** Resolve a cycle id and reject a cycle owned by a different team. */
+export async function resolveCycleId(value: string, teamId?: string): Promise<string> {
+  const cycle = await getCycle(value);
+  const cycleTeam = await awaitRel(cycle.team);
+  if (teamId && cycleTeam?.id && String(cycleTeam.id) !== teamId) {
+    throw new AxiError(
+      `Cycle ${value} belongs to team ${cycleTeam.key ?? cycleTeam.name ?? cycleTeam.id}, not this issue's team`,
+      "VALIDATION_ERROR",
+      ["Choose a cycle from `linear-sdk-axi cycle list --team <key>`"],
+    );
+  }
+  return String(cycle.id);
+}
+
+export async function listIssueLabels(first = 250): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const conn = await client.issueLabels({ first });
+    return nodesOf(conn);
+  });
+}
+
+export async function getIssueLabels(issue: AnyRec): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    if (typeof issue.labels === "function") {
+      return nodesOf(await issue.labels({ first: 100 }));
+    }
+    if (Array.isArray(issue.labels)) return issue.labels;
+    return [];
+  });
+}
+
+export async function resolveLabelIds(
+  values: string[],
+  opts?: { teamId?: string },
+): Promise<string[]> {
+  if (values.length === 0) return [];
+  const labels = await listIssueLabels();
+  const ids: string[] = [];
+
+  for (const value of values) {
+    const wanted = value.toLowerCase();
+    const byId = labels.filter((label) => String(label.id) === value);
+    const byName = labels.filter(
+      (label) =>
+        !label.isGroup && String(label.name ?? "").toLowerCase() === wanted,
+    );
+    let matches = byId.length > 0 ? byId : byName;
+
+    if (byId.length === 0 && opts?.teamId) {
+      const teamScoped = matches.filter(
+        (label) => String(label.teamId ?? "") === opts.teamId,
+      );
+      const workspaceScoped = matches.filter((label) => !label.teamId);
+      matches = teamScoped.length > 0 ? teamScoped : workspaceScoped;
+    }
+
+    if (matches.length === 0) {
+      throw new AxiError(`Label "${value}" not found`, "NOT_FOUND", [
+        "Pass a label name or id available to this workspace/team",
+      ]);
+    }
+    if (matches.length > 1) {
+      const names = matches.map((label) => label.name ?? label.id).join(", ");
+      throw new AxiError(`Ambiguous label "${value}". Matches: ${names}`, "VALIDATION_ERROR", [
+        "Pass the label id instead",
+      ]);
+    }
+    ids.push(String(matches[0].id));
+  }
+
+  return [...new Set(ids)];
 }
 
 export async function resolveTeam(
@@ -233,7 +486,7 @@ export async function resolveTeam(
       );
       if (!match) {
         throw new AxiError(`Team "${keyOrId}" not found`, "NOT_FOUND", [
-          "Run `linear-axi team list` to see teams",
+          "Run `linear-sdk-axi team list` to see teams",
         ]);
       }
       return match;
@@ -246,7 +499,7 @@ export async function resolveTeam(
       "Multiple teams found; pass --team <key>",
       "VALIDATION_ERROR",
       [
-        "Run `linear-axi team list`",
+        "Run `linear-sdk-axi team list`",
         "Retry with --team <key>",
       ],
     );
@@ -303,7 +556,7 @@ export async function completedStateId(team: AnyRec): Promise<string> {
     throw new AxiError(
       "No completed-type workflow state found for this team",
       "NOT_FOUND",
-      ["Run `linear-axi status --team <key>` to inspect workflow states"],
+      ["Run `linear-sdk-axi status --team <key>` to inspect workflow states"],
     );
   }
   const done = completed.find(
@@ -404,7 +657,7 @@ export async function getProject(idOrName: string): Promise<AnyRec> {
     );
     if (!match) {
       throw new AxiError(`Project "${idOrName}" not found`, "NOT_FOUND", [
-        "Run `linear-axi project list`",
+        "Run `linear-sdk-axi project list`",
       ]);
     }
     return match;
@@ -419,6 +672,62 @@ export async function resolveProjectId(idOrName: string): Promise<string> {
   return String(project.id);
 }
 
+export async function getProjectStatus(project: AnyRec): Promise<AnyRec | undefined> {
+  return withLinearErrors(async () => awaitRel(project.status));
+}
+
+export async function listProjectStatuses(first = 50): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    const conn = await getLinearClient().projectStatuses({ first });
+    return nodesOf(conn);
+  });
+}
+
+export async function resolveProjectStatusId(value: string): Promise<string> {
+  const statuses = await listProjectStatuses(100);
+  const wanted = value.toLowerCase();
+  const matches = statuses.filter(
+    (status) =>
+      String(status.id ?? "") === value ||
+      String(status.name ?? "").toLowerCase() === wanted ||
+      String(status.type ?? "").toLowerCase() === wanted,
+  );
+  if (matches.length === 1 && matches[0].id) return String(matches[0].id);
+  if (matches.length > 1) {
+    throw new AxiError(
+      `Ambiguous project status "${value}". Matches: ${matches.map((status) => status.name ?? status.id).join(", ")}`,
+      "VALIDATION_ERROR",
+      ["Pass the project status id from `linear-sdk-axi project status list`"],
+    );
+  }
+  throw new AxiError(`Project status "${value}" not found`, "NOT_FOUND", [
+    "Run `linear-sdk-axi project status list`",
+  ]);
+}
+
+export async function createProject(input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().createProject(input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to create project", "UNKNOWN");
+    }
+    const project = await awaitRel(payload?.project);
+    if (!project) throw new AxiError("Project create returned no project", "UNKNOWN");
+    return project;
+  });
+}
+
+export async function updateProject(id: string, input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().updateProject(id, input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to update project", "UNKNOWN");
+    }
+    const project = await awaitRel(payload?.project);
+    return project ?? (await getProject(id));
+  });
+}
+
 export async function createIssue(input: AnyRec): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
@@ -431,6 +740,18 @@ export async function createIssue(input: AnyRec): Promise<AnyRec> {
       throw new AxiError("Issue create returned no issue", "UNKNOWN");
     }
     return issue;
+  });
+}
+
+export async function createIssueRelation(input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const client = getLinearClient();
+    const payload = await client.createIssueRelation(input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to create issue relation", "UNKNOWN");
+    }
+    const relation = await awaitRel(payload?.issueRelation);
+    return relation ?? input;
   });
 }
 
