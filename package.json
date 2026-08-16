@@ -30,6 +30,14 @@
     "access": "public"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shiftynick/linear-sdk-axi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shiftynick/linear-sdk-axi/issues"
+  },
+  "homepage": "https://github.com/shiftynick/linear-sdk-axi#readme",
   "engines": {
     "node": ">=20"
   },
