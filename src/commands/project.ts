@@ -17,10 +17,13 @@ import { formatCountLine } from "../format.js";
 import {
   createProject,
   getProject,
+  getProjectStatus,
+  listProjectStatuses,
   listProjects,
   projectIssueCounts,
   resolveTeam,
   resolveTeamFromContext,
+  resolveProjectStatusId,
   updateProject,
 } from "../linear.js";
 import {
@@ -33,19 +36,21 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|create|update> [id]
+export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|create|update> [id]
 List, view, create, or update Linear projects.
 
-subcommands: list, view <id|name>, create, update <id|name>
+subcommands: list, view <id|name>, status list, create, update <id|name>
 flags{list}: --team <key>, --limit (default 30), --help
 flags{view}: --full, --help
-flags{create}: --name (required), --team (required unless only one team), --description/--body, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
-flags{update}: --name, --description/--body, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
+flags{status list}: --limit (default 50)
+flags{create}: --name (required), --team (required unless only one team), --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
+flags{update}: --name, --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
 examples:
   linear-sdk-axi project list
   linear-sdk-axi project list --team ENG
   linear-sdk-axi project view "Launch"
   linear-sdk-axi project view <id> --full
+  linear-sdk-axi project status list
   linear-sdk-axi project create --name "Launch" --team ENG --dry-run
   linear-sdk-axi project update "Launch" --target-date 2026-10-01 --dry-run
 `;
@@ -73,6 +78,8 @@ export async function projectCommand(
   switch (sub) {
     case "view":
       return viewProjectCommand(args, ctx);
+    case "status":
+      return listProjectStatusesCommand(args, ctx);
     case "create":
       return createProjectCommand(args, ctx);
     case "update":
@@ -99,12 +106,15 @@ async function listProjectsCommand(
     teamId = team.id ? String(team.id) : undefined;
   }
   const projects = await listProjects({ first: limit, teamId });
-  const items = projects.map((p) => ({
-    id: p.id ?? null,
-    name: p.name ?? null,
-    state: p.state ?? p.status ?? null,
-    progress: formatProgress(p.progress),
-    issueCount: typeof p.issueCount === "number" ? p.issueCount : null,
+  const items = await Promise.all(projects.map(async (p) => {
+    const status = await getProjectStatus(p);
+    return {
+      id: p.id ?? null,
+      name: p.name ?? null,
+      state: status?.name ?? p.state ?? null,
+      progress: formatProgress(p.progress),
+      issueCount: typeof p.issueCount === "number" ? p.issueCount : null,
+    };
   }));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
@@ -117,6 +127,38 @@ async function listProjectsCommand(
   ]);
 }
 
+async function listProjectStatusesCommand(
+  args: string[],
+  _ctx?: TeamContext,
+): Promise<string> {
+  const sub = args[1];
+  if (sub !== "list") {
+    throw new AxiError("Unknown project status action", "VALIDATION_ERROR", [
+      "Run `linear-sdk-axi project status list`",
+    ]);
+  }
+  assertNoUnknownFlags(args, ["--limit", "--team"], "project status list");
+  const limit = parseLimit(getFlag(args, "--limit"), 50);
+  const statuses = await listProjectStatuses(limit);
+  const items = statuses.map((status) => ({
+    id: status.id ?? null,
+    name: status.name ?? null,
+    type: status.type ?? null,
+  }));
+  return renderOutput([
+    formatCountLine({ count: items.length, limit }),
+    renderList(
+      "projectStatuses",
+      items,
+      [field("id"), field("name"), field("type")],
+      "0 project statuses",
+    ),
+    renderHelp([
+      "Pass a status id, name, or type to `project create` or `project update`",
+    ]),
+  ]);
+}
+
 async function viewProjectCommand(
   args: string[],
   ctx?: TeamContext,
@@ -125,6 +167,7 @@ async function viewProjectCommand(
   const id = requirePositional(args, 1, "project id or name");
   const full = hasFlag(args, "--full");
   const project = await getProject(id);
+  const status = await getProjectStatus(project);
   const description =
     typeof project.description === "string" ? project.description : "";
   const truncated = !full && wasTruncated(description, 500);
@@ -132,7 +175,7 @@ async function viewProjectCommand(
   const item = {
     id: project.id ?? null,
     name: project.name ?? null,
-    state: project.state ?? project.status ?? null,
+    state: status?.name ?? project.state ?? null,
     progress: formatProgress(project.progress),
     priority: typeof project.priority === "number" ? project.priority : null,
     startDate: project.startDate ?? null,
@@ -212,17 +255,18 @@ function plannedOrWrite(
   );
 }
 
-function projectDetail(
+async function projectDetail(
   project: Record<string, unknown>,
   action: "created" | "updated",
-): string {
+): Promise<string> {
+  const status = await getProjectStatus(project);
   return renderOutput([
     renderDetail(
       "project",
       {
         id: project.id ?? null,
         name: project.name ?? null,
-        state: project.state ?? project.status ?? null,
+        state: status?.name ?? project.state ?? null,
         priority: typeof project.priority === "number" ? project.priority : null,
         startDate: project.startDate ?? null,
         targetDate: project.targetDate ?? null,
@@ -258,6 +302,7 @@ async function createProjectCommand(
       "--description",
       "--body",
       "--body-file",
+      "--status",
       "--priority",
       "--start-date",
       "--target-date",
@@ -276,6 +321,7 @@ async function createProjectCommand(
     required: false,
     inlineFlags: ["--body", "--description"],
   });
+  const statusRaw = optionalFlagArg(args, "--status");
   const priority = parsePriority(optionalFlagArg(args, "--priority"));
   const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", false);
   const targetDate = parseDate(optionalFlagArg(args, "--target-date"), "--target-date", false);
@@ -285,6 +331,7 @@ async function createProjectCommand(
     teamIds: [String(team.id)],
   };
   if (description !== undefined) input.description = description;
+  if (statusRaw !== undefined) input.statusId = await resolveProjectStatusId(statusRaw);
   if (priority !== undefined) input.priority = priority;
   if (startDate !== undefined) input.startDate = startDate;
   if (targetDate !== undefined) input.targetDate = targetDate;
@@ -306,6 +353,7 @@ async function updateProjectCommand(
       "--description",
       "--body",
       "--body-file",
+      "--status",
       "--priority",
       "--start-date",
       "--target-date",
@@ -321,12 +369,14 @@ async function updateProjectCommand(
     required: false,
     inlineFlags: ["--body", "--description"],
   });
+  const statusRaw = optionalFlagArg(args, "--status");
   const priority = parsePriority(optionalFlagArg(args, "--priority"));
   const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", true);
   const targetDate = parseDate(optionalFlagArg(args, "--target-date"), "--target-date", true);
   if (
     name === undefined &&
     description === undefined &&
+    statusRaw === undefined &&
     priority === undefined &&
     startDate === undefined &&
     targetDate === undefined
@@ -335,6 +385,7 @@ async function updateProjectCommand(
   }
 
   const project = await getProject(id);
+  const projectStatus = await getProjectStatus(project);
   const input: Record<string, unknown> = {};
   const planned: Record<string, unknown> = {};
   if (name !== undefined) {
@@ -344,6 +395,13 @@ async function updateProjectCommand(
   if (description !== undefined) {
     planned.description = description;
     if (description !== project.description) input.description = description;
+  }
+  if (statusRaw !== undefined) {
+    const statusId = await resolveProjectStatusId(statusRaw);
+    planned.statusId = statusId;
+    if (statusId !== (projectStatus?.id ? String(projectStatus.id) : undefined)) {
+      input.statusId = statusId;
+    }
   }
   if (priority !== undefined) {
     planned.priority = priority;

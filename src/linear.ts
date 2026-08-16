@@ -672,6 +672,39 @@ export async function resolveProjectId(idOrName: string): Promise<string> {
   return String(project.id);
 }
 
+export async function getProjectStatus(project: AnyRec): Promise<AnyRec | undefined> {
+  return withLinearErrors(async () => awaitRel(project.status));
+}
+
+export async function listProjectStatuses(first = 50): Promise<AnyRec[]> {
+  return withLinearErrors(async () => {
+    const conn = await getLinearClient().projectStatuses({ first });
+    return nodesOf(conn);
+  });
+}
+
+export async function resolveProjectStatusId(value: string): Promise<string> {
+  const statuses = await listProjectStatuses(100);
+  const wanted = value.toLowerCase();
+  const matches = statuses.filter(
+    (status) =>
+      String(status.id ?? "") === value ||
+      String(status.name ?? "").toLowerCase() === wanted ||
+      String(status.type ?? "").toLowerCase() === wanted,
+  );
+  if (matches.length === 1 && matches[0].id) return String(matches[0].id);
+  if (matches.length > 1) {
+    throw new AxiError(
+      `Ambiguous project status "${value}". Matches: ${matches.map((status) => status.name ?? status.id).join(", ")}`,
+      "VALIDATION_ERROR",
+      ["Pass the project status id from `linear-sdk-axi project status list`"],
+    );
+  }
+  throw new AxiError(`Project status "${value}" not found`, "NOT_FOUND", [
+    "Run `linear-sdk-axi project status list`",
+  ]);
+}
+
 export async function createProject(input: AnyRec): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const payload = await getLinearClient().createProject(input);
