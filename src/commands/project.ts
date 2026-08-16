@@ -42,6 +42,7 @@ import {
   type FieldDef,
 } from "../toon.js";
 import { assertMaxLength, LINEAR_LIMITS } from "../validation.js";
+import { assertVerificationMode, verifyWrite } from "../verification.js";
 
 export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|create|update|updates> [id]
 List, view, create, or update Linear projects.
@@ -50,10 +51,10 @@ subcommands: list, view <id|name>, status list, create, update <id|name>, update
 flags{list}: --team <key>, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --help
 flags{view}: --full, --issues, --team <key>, --limit (issue page size, default 20), --after <cursor>, --all --max-items <n>, --help
 flags{status list}: --limit (default 50)
-flags{create}: --name (required), --team (required unless only one team), --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
-flags{update}: --name, --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
+flags{create}: --name (required), --team (required unless only one team), --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run, --verify
+flags{update}: --name, --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run, --verify
 flags{updates list}: --limit (page size, default 20), --after <cursor>, --all --max-items <n>
-flags{updates create}: --body or --body-file, --health <on-track|at-risk|off-track>, --dry-run
+flags{updates create}: --body or --body-file, --health <on-track|at-risk|off-track>, --dry-run, --verify
 examples:
   linear-sdk-axi project list
   linear-sdk-axi project list --team ENG
@@ -171,7 +172,7 @@ async function projectUpdatesCommand(
 
   assertNoUnknownFlags(
     args,
-    ["--body", "--body-file", "--description", "--health", "--dry-run", "--team"],
+    ["--body", "--body-file", "--description", "--health", "--dry-run", "--verify", "--team"],
     "project updates create",
   );
   const body = takeBody(args, { required: false, inlineFlags: ["--body"] });
@@ -183,6 +184,8 @@ async function projectUpdatesCommand(
     );
   }
   const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const input = {
     projectId,
     ...(body !== undefined ? { body } : {}),
@@ -190,7 +193,7 @@ async function projectUpdatesCommand(
   };
   return plannedOrWrite(dryRun, "createProjectUpdate", input, async () => {
     const update = await createProjectUpdate(input);
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "projectUpdate",
         {
@@ -207,7 +210,28 @@ async function projectUpdatesCommand(
       renderHelp([
         `Run \`linear-sdk-axi project updates list ${JSON.stringify(id)}${suffix}\` to inspect project updates`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      const intended = {
+        id: String(update.id),
+        ...(body !== undefined ? { body } : {}),
+        ...(health !== undefined ? { health } : {}),
+      };
+      blocks.push(await verifyWrite(intended, async () => {
+        const freshProject = await getProject(projectId);
+        const updates = await listProjectUpdates(freshProject, {
+          pageSize: 50,
+          all: true,
+          maxItems: 250,
+        });
+        const observed = updates.nodes.find((item) => item.id === intended.id);
+        if (!observed) return { ...intended, id: null };
+        return Object.fromEntries(
+          Object.keys(intended).map((key) => [key, observed[key as keyof typeof observed]]),
+        );
+      }));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -409,6 +433,30 @@ function plannedOrWrite(
   );
 }
 
+async function readProjectState(
+  id: string,
+  intended: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const project = await getProject(id);
+  const status = Object.prototype.hasOwnProperty.call(intended, "statusId")
+    ? await getProjectStatus(project)
+    : undefined;
+  const values: Record<string, unknown> = {
+    name: project.name ?? null,
+    description: project.description ?? "",
+    statusId: status?.id ? String(status.id) : null,
+    priority: typeof project.priority === "number" ? project.priority : null,
+    startDate: project.startDate ?? null,
+    targetDate: project.targetDate ?? null,
+    teamIds: Array.isArray(project.teamIds)
+      ? project.teamIds.map(String).sort()
+      : [],
+  };
+  return Object.fromEntries(
+    Object.keys(intended).map((key) => [key, values[key]]),
+  );
+}
+
 async function projectDetail(
   project: Record<string, unknown>,
   action: "created" | "updated",
@@ -461,6 +509,7 @@ async function createProjectCommand(
       "--start-date",
       "--target-date",
       "--dry-run",
+      "--verify",
     ],
     "project create",
   );
@@ -471,6 +520,8 @@ async function createProjectCommand(
     ]);
   }
   const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const description = takeBody(args, {
     required: false,
     inlineFlags: ["--body", "--description"],
@@ -497,7 +548,14 @@ async function createProjectCommand(
 
   return plannedOrWrite(dryRun, "createProject", input, async () => {
     const created = await createProject(input);
-    return projectDetail(created, "created");
+    const blocks = [await projectDetail(created, "created")];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        input,
+        () => readProjectState(String(created.id), input),
+      ));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -517,12 +575,15 @@ async function updateProjectCommand(
       "--start-date",
       "--target-date",
       "--dry-run",
+      "--verify",
       "--team",
     ],
     "project update",
   );
   const id = requirePositional(args, 1, "project id or name");
   const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const name = optionalFlagArg(args, "--name");
   const description = takeBody(args, {
     required: false,
@@ -582,17 +643,31 @@ async function updateProjectCommand(
 
   if (Object.keys(input).length === 0) {
     if (dryRun) return plannedOrWrite(true, "updateProject", { id: project.id, ...planned }, async () => "");
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "project",
         { id: project.id ?? null, name: project.name ?? null, message: "already in desired state (no-op)" },
         [field("id"), field("name"), field("message")],
       ),
       renderHelp([`Run \`linear-sdk-axi project view ${String(project.id ?? id)}\` for details`]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        planned,
+        () => readProjectState(String(project.id), planned),
+      ));
+    }
+    return renderOutput(blocks);
   }
   return plannedOrWrite(dryRun, "updateProject", { id: project.id, ...input }, async () => {
     const updated = await updateProject(String(project.id), input);
-    return projectDetail(updated, "updated");
+    const blocks = [await projectDetail(updated, "updated")];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        planned,
+        () => readProjectState(String(project.id), planned),
+      ));
+    }
+    return renderOutput(blocks);
   });
 }

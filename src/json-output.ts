@@ -74,13 +74,15 @@ function helpArray(value: unknown): string[] | undefined {
 }
 
 function extractRenderedHelp(text: string): { body: string; help?: string[] } {
-  const match = /(?:^|\n)help\[\d+\]:\n/.exec(text);
-  if (!match || match.index === undefined) return { body: text };
-  const body = text.slice(0, match.index).trim();
-  const helpText = text.slice(match.index + match[0].length);
-  const help = helpText
-    .split("\n")
-    .map((line) => line.replace(/^  /, "").trimEnd())
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => /^help\[\d+\]:$/.test(line));
+  if (start === -1) return { body: text };
+  let end = start + 1;
+  while (end < lines.length && lines[end].startsWith("  ")) end++;
+  const body = [...lines.slice(0, start), ...lines.slice(end)].join("\n").trim();
+  const help = lines
+    .slice(start + 1, end)
+    .map((line) => line.slice(2).trimEnd())
     .filter(Boolean);
   return { body, help };
 }
