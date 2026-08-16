@@ -1,4 +1,8 @@
 import { LinearClient } from "@linear/sdk";
+import {
+  refreshOAuthTokensIfNeeded,
+  storedOAuthAccessToken,
+} from "./auth.js";
 import { AxiError, authRequiredError } from "./errors.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK models are lazy and polymorphic
@@ -28,11 +32,30 @@ export function setLinearClientForTests(c: LinearLike | undefined): void {
   override = c;
 }
 
+/** Refresh a saved OAuth token before commands construct the SDK client. */
+export async function prepareLinearAuth(): Promise<void> {
+  if (override || process.env.LINEAR_API_KEY) return;
+  try {
+    await refreshOAuthTokensIfNeeded();
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : "Saved OAuth session could not be refreshed";
+    throw new AxiError(detail, "AUTH_REQUIRED", [
+      "Run `linear-sdk-axi auth login --client-id <client-id>` to sign in again",
+      "Or set LINEAR_API_KEY for noninteractive authentication",
+    ]);
+  }
+}
+
 export function getLinearClient(): LinearLike {
   if (override) return override;
   const apiKey = process.env.LINEAR_API_KEY;
-  if (!apiKey) throw authRequiredError();
-  return new LinearClient({ apiKey }) as unknown as LinearLike;
+  if (apiKey) return new LinearClient({ apiKey }) as unknown as LinearLike;
+  const accessToken = storedOAuthAccessToken();
+  if (accessToken) return new LinearClient({ accessToken }) as unknown as LinearLike;
+  throw authRequiredError();
 }
 
 export type TeamContext = {

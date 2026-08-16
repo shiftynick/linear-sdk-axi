@@ -116,7 +116,7 @@ export function assertNoUnknownFlags(
       throw new AxiError(
         `unknown flag ${name} for \`${commandLabel}\`. valid flags: ${validFlags.join(", ")} (--help always allowed)`,
         "VALIDATION_ERROR",
-        [`Run \`linear-axi ${commandLabel} --help\``],
+        [`Run \`linear-sdk-axi ${commandLabel} --help\``],
       );
     }
   }
