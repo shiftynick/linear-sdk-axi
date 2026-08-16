@@ -54,6 +54,10 @@ export type HydratedIssue = {
   assigneeEmail: string | undefined;
   projectId: string | undefined;
   projectName: string | undefined;
+  cycleId: string | undefined;
+  priority: number | null;
+  estimate: number | null;
+  dueDate: string | null;
   raw: AnyRec;
 };
 
@@ -93,6 +97,10 @@ export async function hydrateIssue(issue: AnyRec): Promise<HydratedIssue> {
     assigneeEmail: assignee?.email ? String(assignee.email) : undefined,
     projectId: project?.id ? String(project.id) : undefined,
     projectName: project?.name ? String(project.name) : undefined,
+    cycleId: issue.cycleId ? String(issue.cycleId) : undefined,
+    priority: typeof issue.priority === "number" ? issue.priority : null,
+    estimate: typeof issue.estimate === "number" ? issue.estimate : null,
+    dueDate: typeof issue.dueDate === "string" ? issue.dueDate : null,
     raw: issue,
   };
 }
@@ -188,7 +196,7 @@ export async function getIssue(id: string): Promise<AnyRec> {
     const issue = nodesOf(conn)[0];
     if (!issue) {
       throw new AxiError(`Issue ${id} not found`, "NOT_FOUND", [
-        "Run `linear-axi issue list` to see assigned issues",
+        "Run `linear-sdk-axi issue list` to see assigned issues",
       ]);
     }
     return issue;
@@ -372,11 +380,25 @@ export async function getCycle(id: string): Promise<AnyRec> {
     const cycle = await getLinearClient().cycle(id);
     if (!cycle?.id) {
       throw new AxiError(`Cycle ${id} not found`, "NOT_FOUND", [
-        "Run `linear-axi cycle list` to see available cycles",
+        "Run `linear-sdk-axi cycle list` to see available cycles",
       ]);
     }
     return cycle;
   });
+}
+
+/** Resolve a cycle id and reject a cycle owned by a different team. */
+export async function resolveCycleId(value: string, teamId?: string): Promise<string> {
+  const cycle = await getCycle(value);
+  const cycleTeam = await awaitRel(cycle.team);
+  if (teamId && cycleTeam?.id && String(cycleTeam.id) !== teamId) {
+    throw new AxiError(
+      `Cycle ${value} belongs to team ${cycleTeam.key ?? cycleTeam.name ?? cycleTeam.id}, not this issue's team`,
+      "VALIDATION_ERROR",
+      ["Choose a cycle from `linear-sdk-axi cycle list --team <key>`"],
+    );
+  }
+  return String(cycle.id);
 }
 
 export async function listIssueLabels(first = 250): Promise<AnyRec[]> {
@@ -464,7 +486,7 @@ export async function resolveTeam(
       );
       if (!match) {
         throw new AxiError(`Team "${keyOrId}" not found`, "NOT_FOUND", [
-          "Run `linear-axi team list` to see teams",
+          "Run `linear-sdk-axi team list` to see teams",
         ]);
       }
       return match;
@@ -477,7 +499,7 @@ export async function resolveTeam(
       "Multiple teams found; pass --team <key>",
       "VALIDATION_ERROR",
       [
-        "Run `linear-axi team list`",
+        "Run `linear-sdk-axi team list`",
         "Retry with --team <key>",
       ],
     );
@@ -534,7 +556,7 @@ export async function completedStateId(team: AnyRec): Promise<string> {
     throw new AxiError(
       "No completed-type workflow state found for this team",
       "NOT_FOUND",
-      ["Run `linear-axi status --team <key>` to inspect workflow states"],
+      ["Run `linear-sdk-axi status --team <key>` to inspect workflow states"],
     );
   }
   const done = completed.find(
@@ -635,7 +657,7 @@ export async function getProject(idOrName: string): Promise<AnyRec> {
     );
     if (!match) {
       throw new AxiError(`Project "${idOrName}" not found`, "NOT_FOUND", [
-        "Run `linear-axi project list`",
+        "Run `linear-sdk-axi project list`",
       ]);
     }
     return match;

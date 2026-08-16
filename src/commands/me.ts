@@ -3,12 +3,12 @@ import { assertNoUnknownFlags } from "../args.js";
 import { getAssignedIssues, getViewer } from "../linear.js";
 import { renderHelp, renderOutput } from "../toon.js";
 
-export const ME_HELP = `usage: linear-axi me
+export const ME_HELP = `usage: linear-sdk-axi me
 Show the authenticated Linear viewer and assigned issue count.
 
 flags: --help
 examples:
-  linear-axi me
+  linear-sdk-axi me
 `;
 
 export async function meCommand(args: string[]): Promise<string> {
@@ -25,8 +25,8 @@ export async function meCommand(args: string[]): Promise<string> {
       },
     }),
     renderHelp([
-      "Run `linear-axi issue list` for assigned uncompleted issues",
-      "Run `linear-axi` for the dashboard",
+      "Run `linear-sdk-axi issue list` for assigned uncompleted issues",
+      "Run `linear-sdk-axi` for the dashboard",
     ]),
   ]);
 }
