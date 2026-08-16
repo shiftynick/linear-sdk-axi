@@ -63,7 +63,7 @@ const TOPICS: Record<string, UsageTopic> = {
       },
       {
         goal: "change fields",
-        command: "linear-sdk-axi issue update <id> [--parent <id|none>] --add-label <name|id> [--remove-label <name|id>]",
+        command: "linear-sdk-axi issue update <id> [--parent <id|none>] --add-label <name|id> [--remove-label <name|id>] [--verify]",
       },
       {
         goal: "inspect relations",
@@ -85,11 +85,12 @@ const TOPICS: Record<string, UsageTopic> = {
         goal: "reply in thread",
         command: "linear-sdk-axi issue comment <id> --reply-to <comment-id> --body \"...\"",
       },
-      { goal: "complete", command: "linear-sdk-axi issue close <id> [--dry-run]" },
+      { goal: "complete", command: "linear-sdk-axi issue close <id> [--dry-run|--verify]" },
     ],
     next: [
       "Use Linear identifiers or UUIDs for <id>",
       "Issue writes support --dry-run; update and close are idempotent",
+      "Use --verify instead of --dry-run to apply a write and prove the fresh resulting state",
     ],
   },
   label: {
@@ -114,20 +115,21 @@ const TOPICS: Record<string, UsageTopic> = {
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
       { goal: "issue summary", command: "linear-sdk-axi project view <id|name> --issues" },
       { goal: "status updates", command: "linear-sdk-axi project updates list <id|name>" },
-      { goal: "post status safely", command: "linear-sdk-axi project updates create <id|name> --health <on-track|at-risk|off-track> --body \"...\" --dry-run" },
+      { goal: "post status safely", command: "linear-sdk-axi project updates create <id|name> --health <on-track|at-risk|off-track> --body \"...\" [--dry-run|--verify]" },
       { goal: "list project statuses", command: "linear-sdk-axi project status list" },
       {
         goal: "create safely",
-        command: "linear-sdk-axi project create --name \"...\" --team <key> [--status <id|name|type>] [--target-date YYYY-MM-DD] --dry-run",
+        command: "linear-sdk-axi project create --name \"...\" --team <key> [--status <id|name|type>] [--target-date YYYY-MM-DD] [--dry-run|--verify]",
       },
       {
         goal: "change outcome details",
-        command: "linear-sdk-axi project update <id|name> [--status <id|name|type>] [--priority 0-4] [--target-date YYYY-MM-DD|none] --dry-run",
+        command: "linear-sdk-axi project update <id|name> [--status <id|name|type>] [--priority 0-4] [--target-date YYYY-MM-DD|none] [--dry-run|--verify]",
       },
     ],
     next: [
       "A project is a named outcome, not an issue bucket",
       "Project writes support --dry-run and idempotent no-ops",
+      "Use --verify instead of --dry-run to apply a write and compare intended versus freshly observed state",
     ],
   },
   cycle: {

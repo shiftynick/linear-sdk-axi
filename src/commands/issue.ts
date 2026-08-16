@@ -51,6 +51,7 @@ import {
   renderPagination,
   type FieldDef,
 } from "../toon.js";
+import { assertVerificationMode, verifyWrite } from "../verification.js";
 
 export const ISSUE_HELP = `usage: linear-sdk-axi issue <subcommand>
 subcommands[8]:
@@ -62,21 +63,21 @@ flags{search}:
 flags{view}:
   --full, --comments, --sub-issues
 flags{create}:
-  --title (required), --team (required unless only one team), --description/--body/--body-file, --assignee, --state, --project, --cycle <id>, --priority <0-4>, --estimate <n>, --due-date <YYYY-MM-DD>, --parent, --label (repeatable), --dry-run
+  --title (required), --team (required unless only one team), --description/--body/--body-file, --assignee, --state, --project, --cycle <id>, --priority <0-4>, --estimate <n>, --due-date <YYYY-MM-DD>, --parent, --label (repeatable), --dry-run, --verify
 flags{update}:
-  --title, --description/--body/--body-file, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
+  --title, --description/--body/--body-file, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run, --verify
 flags{relation list}:
   --limit (page size, default 50), --after <cursor>, --all --max-items <n>
 flags{relation add}:
-  exactly one: --blocks, --blocked-by, --related, --duplicate-of; --dry-run
+  exactly one: --blocks, --blocked-by, --related, --duplicate-of; --dry-run, --verify
 flags{relation remove}:
-  --id <relation-id> or exactly one of --blocks, --blocked-by, --related, --duplicate-of; --dry-run
+  --id <relation-id> or exactly one of --blocks, --blocked-by, --related, --duplicate-of; --dry-run, --verify
 flags{comment}:
-  --body or --body-file (required), --reply-to <comment-id>, --dry-run
+  --body or --body-file (required), --reply-to <comment-id>, --dry-run, --verify
 flags{comment list}:
   --full, --limit (page size, default 50), --after <cursor>, --all --max-items <n>
 flags{close}:
-  --dry-run
+  --dry-run, --verify
 examples:
   linear-sdk-axi issue list
   linear-sdk-axi issue list --team ENG --state started
@@ -421,6 +422,61 @@ async function plannedOrWrite(
   return write();
 }
 
+function requestedFields(
+  values: Record<string, unknown>,
+  requested: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.keys(requested).map((key) => [key, values[key]]),
+  );
+}
+
+async function readIssueState(
+  id: string,
+  intended: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const issue = await getIssue(id);
+  const hydrated = await hydrateIssue(issue);
+  const labels = Object.prototype.hasOwnProperty.call(intended, "labelIds")
+    ? await getIssueLabels(issue)
+    : [];
+  return requestedFields({
+    title: hydrated.title,
+    description: hydrated.description,
+    assigneeId: hydrated.assigneeId ?? null,
+    stateId: hydrated.stateId ?? null,
+    stateType: hydrated.stateType,
+    projectId: hydrated.projectId ?? null,
+    cycleId: hydrated.cycleId ?? null,
+    priority: hydrated.priority,
+    estimate: hydrated.estimate,
+    dueDate: hydrated.dueDate,
+    parentId: hydrated.raw.parentId ? String(hydrated.raw.parentId) : null,
+    teamId: hydrated.teamId ?? null,
+    labelIds: labels.map((label) => String(label.id)).sort(),
+  }, intended);
+}
+
+async function relationPresence(
+  sourceId: string,
+  intended: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const issue = await getIssue(sourceId);
+  const relations = await getIssueRelations(issue, {
+    pageSize: 50,
+    all: true,
+    maxItems: 250,
+  });
+  const matching = relations.nodes.find((relation) =>
+    (intended.relationId ? relation.id === intended.relationId : true) &&
+    (intended.type ? relation.type === intended.type : true) &&
+    (intended.direction && intended.direction !== "either"
+      ? relation.direction === intended.direction
+      : true) &&
+    (intended.targetId ? relation.issue.id === intended.targetId : true));
+  return { ...intended, present: Boolean(matching) };
+}
+
 async function resolveParentIssue(
   value: string,
   opts: { teamId?: string; issueId?: string },
@@ -495,6 +551,7 @@ async function createIssueCommand(
       "--parent",
       "--label",
       "--dry-run",
+      "--verify",
     ],
     "issue create",
   );
@@ -505,6 +562,8 @@ async function createIssueCommand(
     ]);
   }
   const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const description = takeBody(args, {
     required: false,
     inlineFlags: ["--body", "--description"],
@@ -550,7 +609,7 @@ async function createIssueCommand(
     const created = await createIssue(input);
     const hydrated = await hydrateIssue(created);
     const labels = labelRaw.length > 0 ? await getIssueLabels(created) : [];
-    return renderOutput([
+    const blocks = [
       renderDetail("issue", {
         ...hydrated,
         labels: labels.map((label) => label.name ?? label.id).join(", "),
@@ -569,7 +628,11 @@ async function createIssueCommand(
         `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
         `Run \`linear-sdk-axi issue comment ${hydrated.identifier} --body "..."${suffix}\` to comment`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(input, () => readIssueState(hydrated.id, input)));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -599,12 +662,15 @@ async function updateIssueCommand(
       "--add-label",
       "--remove-label",
       "--dry-run",
+      "--verify",
       "--team",
     ],
     "issue update",
   );
   const id = requirePositional(args, 1, "issue id");
   const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const title = optionalFlagArg(args, "--title");
   const description = takeBody(args, {
     required: false,
@@ -651,6 +717,7 @@ async function updateIssueCommand(
   const current = await hydrateIssue(issue);
   const input: Record<string, unknown> = {};
   const planned: Record<string, unknown> = {};
+  let intendedLabelIds: string[] | undefined;
 
   if (title !== undefined) {
     planned.title = title;
@@ -722,11 +789,12 @@ async function updateIssueCommand(
         "VALIDATION_ERROR",
       );
     }
-    const currentLabelIds = Array.isArray(current.raw.labelIds)
-      ? current.raw.labelIds.map(String)
-      : [];
+    const currentLabelIds = (await getIssueLabels(issue)).map((label) => String(label.id));
     planned.addedLabelIds = addLabelIds;
     planned.removedLabelIds = removeLabelIds;
+    intendedLabelIds = [...new Set([...currentLabelIds, ...addLabelIds])]
+      .filter((labelId) => !removeLabelIds.includes(labelId))
+      .sort();
     const addedLabelIds = addLabelIds.filter((id) => !currentLabelIds.includes(id));
     const removedLabelIds = removeLabelIds.filter((id) => currentLabelIds.includes(id));
     if (addedLabelIds.length > 0) input.addedLabelIds = addedLabelIds;
@@ -735,6 +803,13 @@ async function updateIssueCommand(
 
   const suffix = teamFlagSuffix(ctx);
   const ident = current.identifier;
+  const verificationIntended = {
+    ...Object.fromEntries(
+      Object.entries(planned).filter(([key]) =>
+        key !== "addedLabelIds" && key !== "removedLabelIds"),
+    ),
+    ...(intendedLabelIds ? { labelIds: intendedLabelIds } : {}),
+  };
 
   if (Object.keys(input).length === 0) {
     if (dryRun) {
@@ -748,7 +823,7 @@ async function updateIssueCommand(
         }),
       ]);
     }
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "issue",
         { ...current, message: "already in desired state (no-op)" },
@@ -763,7 +838,14 @@ async function updateIssueCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue view ${ident}${suffix}\` for details`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        verificationIntended,
+        () => readIssueState(current.id, verificationIntended),
+      ));
+    }
+    return renderOutput(blocks);
   }
 
   return plannedOrWrite(
@@ -776,7 +858,7 @@ async function updateIssueCommand(
       const requestedLabelChanges =
         addLabelRaw.length > 0 || removeLabelRaw.length > 0;
       const labels = requestedLabelChanges ? await getIssueLabels(updated) : [];
-      return renderOutput([
+      const blocks = [
         renderDetail("issue", {
           ...hydrated,
           labels: labels.map((label) => label.name ?? label.id).join(", "),
@@ -794,7 +876,14 @@ async function updateIssueCommand(
         renderHelp([
           `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
         ]),
-      ]);
+      ];
+      if (verify) {
+        blocks.push(await verifyWrite(
+          verificationIntended,
+          () => readIssueState(current.id, verificationIntended),
+        ));
+      }
+      return renderOutput(blocks);
     },
   );
 }
@@ -881,7 +970,7 @@ async function addIssueRelationCommand(
 ): Promise<string> {
   assertNoUnknownFlags(
     args,
-    ["--blocks", "--blocked-by", "--related", "--duplicate-of", "--dry-run", "--team"],
+    ["--blocks", "--blocked-by", "--related", "--duplicate-of", "--dry-run", "--verify", "--team"],
     "issue relation add",
   );
   const sourceArg = requirePositional(args, 2, "source issue id");
@@ -919,10 +1008,18 @@ async function addIssueRelationCommand(
     ? { issueId: target.id, relatedIssueId: source.id, type: option.type }
     : { issueId: source.id, relatedIssueId: target.id, type: option.type };
   const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const suffix = teamFlagSuffix(ctx);
+  const verificationIntended = {
+    type: option.type,
+    direction: option.direction,
+    targetId: target.id,
+    present: true,
+  };
 
   if (alreadyExists) {
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "relation",
         {
@@ -936,12 +1033,19 @@ async function addIssueRelationCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        verificationIntended,
+        () => relationPresence(source.id, verificationIntended),
+      ));
+    }
+    return renderOutput(blocks);
   }
 
   return plannedOrWrite(dryRun, "createIssueRelation", input, async () => {
     const created = await createIssueRelation(input);
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "relation",
         {
@@ -955,7 +1059,14 @@ async function addIssueRelationCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        verificationIntended,
+        () => relationPresence(source.id, verificationIntended),
+      ));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -965,10 +1076,13 @@ async function removeIssueRelationCommand(
 ): Promise<string> {
   assertNoUnknownFlags(
     args,
-    ["--id", "--blocks", "--blocked-by", "--related", "--duplicate-of", "--dry-run", "--team"],
+    ["--id", "--blocks", "--blocked-by", "--related", "--duplicate-of", "--dry-run", "--verify", "--team"],
     "issue relation remove",
   );
   const sourceArg = requirePositional(args, 2, "source issue id");
+  const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const relationId = optionalFlagArg(args, "--id");
   const selected = RELATION_OPTIONS.filter((option) => hasValueFlag(args, option.flag));
   if ((relationId ? 1 : 0) + selected.length !== 1) {
@@ -1013,7 +1127,13 @@ async function removeIssueRelationCommand(
     label = option.label;
     targetIdentifier = target.identifier;
     if (matches.length === 0) {
-      return renderOutput([
+      const verificationIntended = {
+        type: option.type,
+        direction: option.direction,
+        targetId: target.id,
+        present: false,
+      };
+      const blocks = [
         renderDetail(
           "relation",
           {
@@ -1024,7 +1144,14 @@ async function removeIssueRelationCommand(
           },
           [field("source"), field("relation"), field("target"), field("message")],
         ),
-      ]);
+      ];
+      if (verify) {
+        blocks.push(await verifyWrite(
+          verificationIntended,
+          () => relationPresence(source.id, verificationIntended),
+        ));
+      }
+      return renderOutput(blocks);
     }
   }
 
@@ -1040,11 +1167,11 @@ async function removeIssueRelationCommand(
   }
 
   const match = matches[0];
-  const dryRun = hasFlag(args, "--dry-run");
   const suffix = teamFlagSuffix(ctx);
+  const verificationIntended = { relationId: match.id, present: false };
   return plannedOrWrite(dryRun, "deleteIssueRelation", { id: match.id }, async () => {
     await deleteIssueRelation(match.id);
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "relation",
         {
@@ -1059,7 +1186,14 @@ async function removeIssueRelationCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      blocks.push(await verifyWrite(
+        verificationIntended,
+        () => relationPresence(source.id, verificationIntended),
+      ));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -1072,11 +1206,13 @@ async function commentIssueCommand(
   }
   assertNoUnknownFlags(
     args,
-    ["--body", "--body-file", "--description", "--reply-to", "--dry-run", "--team"],
+    ["--body", "--body-file", "--description", "--reply-to", "--dry-run", "--verify", "--team"],
     "issue comment",
   );
   const id = requirePositional(args, 1, "issue id");
   const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const body = takeBody(args, { required: true, inlineFlags: ["--body"] });
   const replyTo = optionalFlagArg(args, "--reply-to");
   const issue = await getIssue(id);
@@ -1095,7 +1231,7 @@ async function commentIssueCommand(
   const suffix = teamFlagSuffix(ctx);
   return plannedOrWrite(dryRun, "createComment", input, async () => {
     const comment = await createComment(input);
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "comment",
         {
@@ -1108,7 +1244,33 @@ async function commentIssueCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      if (!comment.id) {
+        throw new AxiError(
+          "Write applied but Linear returned no comment id for verification",
+          "UNKNOWN",
+        );
+      }
+      const intended = {
+        id: String(comment.id),
+        body,
+        parentId: replyTo ?? null,
+      };
+      blocks.push(await verifyWrite(intended, async () => {
+        const freshIssue = await getIssue(hydrated.id);
+        const comments = await getIssueComments(freshIssue, {
+          pageSize: 50,
+          all: true,
+          maxItems: 250,
+        });
+        const observed = comments.nodes.find((item) => String(item.id) === intended.id);
+        return observed
+          ? { id: String(observed.id), body: observed.body, parentId: observed.parentId ?? null }
+          : { id: null, body: null, parentId: null };
+      }));
+    }
+    return renderOutput(blocks);
   });
 }
 
@@ -1160,9 +1322,11 @@ async function closeIssueCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--dry-run", "--team"], "issue close");
+  assertNoUnknownFlags(args, ["--dry-run", "--verify", "--team"], "issue close");
   const id = requirePositional(args, 1, "issue id");
   const dryRun = hasFlag(args, "--dry-run");
+  const verify = hasFlag(args, "--verify");
+  assertVerificationMode(dryRun, verify);
   const issue = await getIssue(id);
   const current = await hydrateIssue(issue);
   const suffix = teamFlagSuffix(ctx);
@@ -1178,7 +1342,7 @@ async function closeIssueCommand(
         }),
       ]);
     }
-    return renderOutput([
+    const blocks = [
       renderDetail(
         "issue",
         { ...current, message: "already completed (no-op)" },
@@ -1192,7 +1356,12 @@ async function closeIssueCommand(
       renderHelp([
         `Run \`linear-sdk-axi issue view ${current.identifier}${suffix}\` for details`,
       ]),
-    ]);
+    ];
+    if (verify) {
+      const intended = { stateType: "completed" };
+      blocks.push(await verifyWrite(intended, () => readIssueState(current.id, intended)));
+    }
+    return renderOutput(blocks);
   }
 
   const team = current.teamId
@@ -1208,7 +1377,7 @@ async function closeIssueCommand(
     async () => {
       const updated = await updateIssue(current.id, input);
       const hydrated = await hydrateIssue(updated);
-      return renderOutput([
+      const blocks = [
         renderDetail("issue", hydrated, [
           field("identifier"),
           field("title"),
@@ -1218,7 +1387,12 @@ async function closeIssueCommand(
         renderHelp([
           `Run \`linear-sdk-axi issue view ${hydrated.identifier}${suffix}\` for details`,
         ]),
-      ]);
+      ];
+      if (verify) {
+        const intended = { stateId };
+        blocks.push(await verifyWrite(intended, () => readIssueState(current.id, intended)));
+      }
+      return renderOutput(blocks);
     },
   );
 }

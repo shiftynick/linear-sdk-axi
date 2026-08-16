@@ -66,6 +66,7 @@ npx -y linear-sdk-axi issue create --title "<title>" --team <key> --cycle <cycle
 npx -y linear-sdk-axi issue create --title "<title>" --team <key> --parent <id>
 npx -y linear-sdk-axi issue create --title "<title>" --team <key> --dry-run
 npx -y linear-sdk-axi issue update <id> --title "<title>"
+npx -y linear-sdk-axi issue update <id> --title "<title>" --verify
 npx -y linear-sdk-axi issue update <id> --state <name-or-type> --dry-run
 npx -y linear-sdk-axi issue update <id> --add-label "<name|id>" --remove-label "<name|id>"
 npx -y linear-sdk-axi issue update <id> --parent <id|none>
@@ -94,6 +95,7 @@ npx -y linear-sdk-axi project update <id|name> --status "<id|name|type>" --prior
 npx -y linear-sdk-axi project updates list <id|name>
 npx -y linear-sdk-axi project updates create <id|name> --health <on-track|at-risk|off-track> --body "<status>" --dry-run
 npx -y linear-sdk-axi project updates create <id|name> --body-file <path> --dry-run
+npx -y linear-sdk-axi project updates create <id|name> --body "<status>" --verify
 npx -y linear-sdk-axi cycle list
 npx -y linear-sdk-axi cycle list --team <key>
 npx -y linear-sdk-axi cycle view <id>
@@ -120,6 +122,8 @@ take the cycle id shown by `cycle list`. Do not guess IDs.
 - Never prompt. Pass every value as a flag.
 - --dry-run on create/update/comment/close prints the planned mutation and does not write.
 - --dry-run on relation add prints the planned edge and does not write.
+- --verify applies any supported issue, relation, comment, project, or Project Update write, reads the affected object again, and returns `intended` versus `observed` state. It fails when the read or comparison cannot prove success.
+- --verify and --dry-run are mutually exclusive.
 - Close and update are idempotent: already completed / already in desired state -> exit 0 no-op.
 - Parent updates and relation adds are idempotent. Use `--parent none` to detach a sub-issue.
 - Issue scheduling uses cycle IDs from `cycle list`; cycles must belong to the issue's team. `--cycle none`, `--estimate none`, and `--due-date none` clear those values on update.
