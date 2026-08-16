@@ -2,7 +2,9 @@
 
 Agent-ergonomic Linear CLI wrapping the official `@linear/sdk`. It is a direct-SDK alternative to the MCP-based `linear-axi` package, so agents do not need an MCP transport or local MCP server.
 
-Token-efficient TOON stdout, structured errors, idempotent writes, dry-run, and a live dashboard on no args.
+Token-efficient TOON or versioned JSON stdout, structured errors, bounded cursor
+pagination, idempotent writes, dry-run, verified read-after-write mode, and a
+live dashboard on no args.
 
 ## Built with AXI principles
 
@@ -61,9 +63,27 @@ error on stdout.
 
 ## Install
 
-Use npx: npx -y linear-sdk-axi
+Use npx:
+
+```powershell
+npx -y linear-sdk-axi
+```
 
 Or install globally. Prefer npx when the binary is not on PATH.
+
+### Working inside this checkout
+
+Maintainers should invoke the current source through the repository script:
+
+```powershell
+node bin/run-local.mjs --version
+node bin/run-local.mjs issue list --project "Agent-grade Linear project operations"
+```
+
+The runner builds first and forwards the original argument array directly to
+`dist/bin/linear-sdk-axi.js` without a shell. This preserves quoted values on
+Windows and avoids `npm exec --package=linear-sdk-axi@<version>` resolving the
+local checkout in place of the requested published package.
 
 ## For agents
 
@@ -238,44 +258,35 @@ workflow receives a short-lived GitHub OIDC credential, so this repository has
 no `NPM_TOKEN` secret to create or rotate. It reruns tests, builds via
 `prepack`, and npm automatically attaches provenance.
 
-For the first release only, publish `linear-sdk-axi` interactively from a
-maintainer machine with npm 2FA enabled. npm requires the package to exist
-before a trusted publisher can be attached. Then, on npmjs.com, open
-**Packages -> linear-sdk-axi -> Settings -> Trusted publishing** and configure:
-
-| Field | Value |
-| --- | --- |
-| Provider | GitHub Actions |
-| Organization or user | `shiftynick` |
-| Repository | `linear-sdk-axi` |
-| Workflow filename | `publish.yml` |
-| Allowed action | `npm publish` |
-
-After the first release, select **Require two-factor authentication and
-disallow tokens** under **Publishing access**, and use the GitHub Actions
-workflow for every later release. Do not disable 2FA to create an npm token.
+Use the GitHub Actions workflow for releases. Keep **Require two-factor
+authentication and disallow tokens** enabled under npm Publishing access; do
+not add an npm token or disable 2FA.
 
 For a local release check:
 
 ```powershell
 npm ci
+node bin/run-local.mjs --version
 npm test
 npm pack --dry-run
+npm audit --omit=dev --audit-level=high
 ```
 
 ## Scope compared with the MCP CLI named `linear-axi`
 
 This project deliberately stays direct-SDK and npx-friendly. It now carries the
 high-frequency agent work that is absent or less ergonomic upstream: two-tier
-usage discovery, full-text issue search, name/email assignee resolution,
-labels, scheduling fields, parent/sub-issues, relations, unblocked filtering,
-threaded comments, read-only cycles, project create/update, and OAuth/API-key auth.
+usage discovery, bounded pagination, stable JSON output, full-text issue
+search, project-scoped issue reads, name/email assignee resolution, labels,
+scheduling fields, parent/sub-issues, complete relation management, unblocked
+filtering, threaded comments, read-only cycles, project create/update and
+Project Updates, verified writes, and OAuth/API-key auth.
 
-The upstream MCP CLI also has document/milestone write commands and
-repository-level `.linear-project` defaults. Those are useful but more
-opinionated workflow layers; they remain future candidates rather than being
-ported blindly. Self-update is intentionally excluded because `npx` provides
-the update mechanism.
+The upstream MCP CLI also has document commands and repository-level
+`.linear-project` defaults. Those are useful but more opinionated workflow
+layers; they remain future candidates rather than being ported blindly.
+Self-update is intentionally excluded because `npx` provides the update
+mechanism.
 
 ## Ambient context
 

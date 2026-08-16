@@ -27,6 +27,11 @@ Auth: use `LINEAR_API_KEY` for noninteractive work, or OAuth with `linear-sdk-ax
 
 Invoke with `npx -y linear-sdk-axi` when the binary is not on PATH.
 
+When working inside the `linear-sdk-axi` source checkout itself, invoke the
+current source with `node bin/run-local.mjs <args>`. The runner rebuilds first,
+preserves the original argument array, and avoids npm resolving the local
+checkout instead of a requested published version.
+
 ## Output
 
 - stdout is compact TOON by default; pass `--output json` for one versioned JSON value
