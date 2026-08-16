@@ -50,6 +50,14 @@ export type MockProject = {
   priority?: number;
   startDate?: string | null;
   targetDate?: string | null;
+  statusId?: string;
+  projectStatus?: MockProjectStatus | null;
+};
+
+export type MockProjectStatus = {
+  id: string;
+  name: string;
+  type: string;
 };
 
 export type MockLabel = {
@@ -108,6 +116,7 @@ export type MockOptions = {
   issues?: MockIssue[];
   teams?: MockTeam[];
   projects?: MockProject[];
+  projectStatuses?: MockProjectStatus[];
   labels?: MockLabel[];
   cycles?: MockCycle[];
   users?: MockUser[];
@@ -243,6 +252,7 @@ function wrapProject(
   const related = issues.filter((i) => i.project?.id === project.id);
   return {
     ...project,
+    status: Promise.resolve(project.projectStatus ?? null),
     issues: async () => ({
       nodes: related.map((issue) => wrapIssue(issue, issues, relations)),
       totalCount: related.length,
@@ -298,6 +308,11 @@ export function createMockLinear(options: MockOptions = {}): {
   const teams = options.teams ?? [defaultTeam];
   const issues = [...(options.issues ?? [])];
   const projects = options.projects ?? [];
+  const projectStatuses = options.projectStatuses ?? [
+    { id: "project-status-planned", name: "Planned", type: "planned" },
+    { id: "project-status-started", name: "In Progress", type: "started" },
+    { id: "project-status-completed", name: "Completed", type: "completed" },
+  ];
   const labels = options.labels ?? [];
   const relations = [...(options.relations ?? [])];
   const cycles = options.cycles ?? [];
@@ -323,6 +338,8 @@ export function createMockLinear(options: MockOptions = {}): {
       startDate: typeof rec.startDate === "string" ? rec.startDate : null,
       targetDate: typeof rec.targetDate === "string" ? rec.targetDate : null,
       teamIds: Array.isArray(rec.teamIds) ? rec.teamIds.map(String) : [],
+      statusId: typeof rec.statusId === "string" ? rec.statusId : projectStatuses[0]?.id,
+      projectStatus: projectStatuses.find((status) => status.id === rec.statusId) ?? projectStatuses[0] ?? null,
       url: `https://linear.app/project/project-${projects.length + 1}`,
     };
     projects.push(created);
@@ -336,6 +353,10 @@ export function createMockLinear(options: MockOptions = {}): {
     if (typeof rec.name === "string") found.name = rec.name;
     if (typeof rec.description === "string") found.description = rec.description;
     if (typeof rec.priority === "number") found.priority = rec.priority;
+    if (typeof rec.statusId === "string") {
+      found.statusId = rec.statusId;
+      found.projectStatus = projectStatuses.find((status) => status.id === rec.statusId) ?? null;
+    }
     if (Object.prototype.hasOwnProperty.call(rec, "startDate")) {
       found.startDate = typeof rec.startDate === "string" ? rec.startDate : null;
     }
@@ -555,6 +576,10 @@ export function createMockLinear(options: MockOptions = {}): {
         throw err;
       }
       return wrapProject(found, issues, relations);
+    },
+    projectStatuses: async (opts?: { first?: number }) => {
+      const first = opts?.first ?? 50;
+      return connection(projectStatuses.slice(0, first), projectStatuses.length);
     },
     createProject: spies.createProject as LinearLike["createProject"],
     updateProject: spies.updateProject as LinearLike["updateProject"],
