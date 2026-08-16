@@ -21,6 +21,7 @@ export type LinearLike = {
   projectStatuses: (opts?: any) => Promise<any>;
   createProject: (input: any) => Promise<any>;
   updateProject: (id: string, input: any) => Promise<any>;
+  createProjectUpdate: (input: any) => Promise<any>;
   createIssue: (input: any) => Promise<any>;
   updateIssue: (id: string, input: any) => Promise<any>;
   createIssueRelation: (input: any) => Promise<any>;

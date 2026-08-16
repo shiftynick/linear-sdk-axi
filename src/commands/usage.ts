@@ -109,6 +109,8 @@ const TOPICS: Record<string, UsageTopic> = {
       { goal: "list", command: "linear-sdk-axi project list [--team <key>] [--all --max-items <n>]" },
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
       { goal: "issue summary", command: "linear-sdk-axi project view <id|name> --issues" },
+      { goal: "status updates", command: "linear-sdk-axi project updates list <id|name>" },
+      { goal: "post status safely", command: "linear-sdk-axi project updates create <id|name> --health <on-track|at-risk|off-track> --body \"...\" --dry-run" },
       { goal: "list project statuses", command: "linear-sdk-axi project status list" },
       {
         goal: "create safely",

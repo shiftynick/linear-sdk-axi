@@ -17,12 +17,14 @@ import { formatCountLine } from "../format.js";
 import { PAGINATION_FLAGS, parsePagination } from "../pagination.js";
 import {
   createProject,
+  createProjectUpdate,
   getProject,
   getProjectStatus,
   hydrateIssue,
   listIssues,
   listProjectStatuses,
   listProjects,
+  listProjectUpdates,
   projectIssueCounts,
   resolveTeam,
   resolveTeamFromContext,
@@ -41,15 +43,17 @@ import {
 } from "../toon.js";
 import { assertMaxLength, LINEAR_LIMITS } from "../validation.js";
 
-export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|create|update> [id]
+export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|create|update|updates> [id]
 List, view, create, or update Linear projects.
 
-subcommands: list, view <id|name>, status list, create, update <id|name>
+subcommands: list, view <id|name>, status list, create, update <id|name>, updates list <id|name>, updates create <id|name>
 flags{list}: --team <key>, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --help
 flags{view}: --full, --issues, --team <key>, --limit (issue page size, default 20), --after <cursor>, --all --max-items <n>, --help
 flags{status list}: --limit (default 50)
 flags{create}: --name (required), --team (required unless only one team), --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
 flags{update}: --name, --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
+flags{updates list}: --limit (page size, default 20), --after <cursor>, --all --max-items <n>
+flags{updates create}: --body or --body-file, --health <on-track|at-risk|off-track>, --dry-run
 examples:
   linear-sdk-axi project list
   linear-sdk-axi project list --team ENG
@@ -58,6 +62,8 @@ examples:
   linear-sdk-axi project status list
   linear-sdk-axi project create --name "Launch" --team ENG --dry-run
   linear-sdk-axi project update "Launch" --target-date 2026-10-01 --dry-run
+  linear-sdk-axi project updates list "Launch"
+  linear-sdk-axi project updates create "Launch" --health on-track --body "On schedule" --dry-run
 `;
 
 const listSchema: FieldDef[] = [
@@ -90,6 +96,8 @@ export async function projectCommand(
     case "update":
     case "edit":
       return updateProjectCommand(args, ctx);
+    case "updates":
+      return projectUpdatesCommand(args, ctx);
     default:
       throw new AxiError(
         `Unknown project subcommand: ${sub}`,
@@ -97,6 +105,110 @@ export async function projectCommand(
         ["Run `linear-sdk-axi project --help`"],
       );
   }
+}
+
+function parseProjectUpdateHealth(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.toLowerCase().replace(/[_\s]/g, "-");
+  const health = {
+    "on-track": "onTrack",
+    "atrisk": "atRisk",
+    "at-risk": "atRisk",
+    "offtrack": "offTrack",
+    "off-track": "offTrack",
+  }[normalized];
+  if (!health) {
+    throw new AxiError(
+      "--health must be on-track, at-risk, or off-track",
+      "VALIDATION_ERROR",
+    );
+  }
+  return health;
+}
+
+async function projectUpdatesCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  const action = args[1];
+  if (action !== "list" && action !== "create") {
+    throw new AxiError("Unknown project updates action", "VALIDATION_ERROR", [
+      "Run `linear-sdk-axi project updates list <id|name>`",
+      "Run `linear-sdk-axi project updates create <id|name> --body \"...\" --dry-run`",
+    ]);
+  }
+  const id = requirePositional(args, 2, "project id or name");
+  const project = await getProject(id);
+  const projectId = String(project.id);
+  const suffix = teamFlagSuffix(ctx);
+
+  if (action === "list") {
+    assertNoUnknownFlags(args, ["--team", ...PAGINATION_FLAGS], "project updates list");
+    const pagination = parsePagination(args, 20);
+    const result = await listProjectUpdates(project, pagination);
+    const items = result.nodes.map((update) => ({
+      ...update,
+      body: truncateBody(update.body, 500),
+    }));
+    return renderOutput([
+      formatCountLine({
+        count: items.length,
+        limit: result.pagination.hasNextPage ? pagination.maxItems : undefined,
+        totalCount: result.totalCount,
+      }),
+      renderList(
+        "projectUpdates",
+        items,
+        [field("id"), field("health"), field("createdAt"), field("author"), field("body"), field("url")],
+        "0 project updates",
+      ),
+      renderPagination(result.pagination),
+      renderHelp([
+        `Run \`linear-sdk-axi project updates create ${JSON.stringify(id)} --body "..." --dry-run${suffix}\` to plan an update`,
+      ]),
+    ]);
+  }
+
+  assertNoUnknownFlags(
+    args,
+    ["--body", "--body-file", "--description", "--health", "--dry-run", "--team"],
+    "project updates create",
+  );
+  const body = takeBody(args, { required: false, inlineFlags: ["--body"] });
+  const health = parseProjectUpdateHealth(optionalFlagArg(args, "--health"));
+  if (body === undefined && health === undefined) {
+    throw new AxiError(
+      "project updates create requires --body, --body-file, or --health",
+      "VALIDATION_ERROR",
+    );
+  }
+  const dryRun = hasFlag(args, "--dry-run");
+  const input = {
+    projectId,
+    ...(body !== undefined ? { body } : {}),
+    ...(health !== undefined ? { health } : {}),
+  };
+  return plannedOrWrite(dryRun, "createProjectUpdate", input, async () => {
+    const update = await createProjectUpdate(input);
+    return renderOutput([
+      renderDetail(
+        "projectUpdate",
+        {
+          id: update.id ?? null,
+          project: project.name ?? projectId,
+          health: update.health ?? health ?? null,
+          body: truncateBody(update.body ?? body ?? "", 500),
+          createdAt: update.createdAt ?? null,
+          url: update.url ?? null,
+          action: "created",
+        },
+        [field("id"), field("project"), field("health"), field("body"), field("createdAt"), field("url"), field("action")],
+      ),
+      renderHelp([
+        `Run \`linear-sdk-axi project updates list ${JSON.stringify(id)}${suffix}\` to inspect project updates`,
+      ]),
+    ]);
+  });
 }
 
 async function listProjectsCommand(

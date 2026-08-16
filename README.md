@@ -110,6 +110,8 @@ workspace access is in doubt.
 | linear-sdk-axi project status list | List action-ready project status IDs, names, and types |
 | linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, status, priority, start/target dates. --dry-run |
 | linear-sdk-axi project update <id> | Update name, description, status, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
+| linear-sdk-axi project updates list <id> | List milestone updates with health, author, body, and cursor pagination |
+| linear-sdk-axi project updates create <id> | Post milestone body/health (`on-track`, `at-risk`, `off-track`). Supports `--body-file` and `--dry-run` |
 | linear-sdk-axi cycle list | Read-only cycles: id, name, state, progress. Optional `--team` |
 | linear-sdk-axi cycle view <id> | Cycle timing and description. `--full` for complete text |
 | linear-sdk-axi team list | Teams: key, name, issue count |

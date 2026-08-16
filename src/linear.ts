@@ -808,6 +808,69 @@ export async function updateProject(id: string, input: AnyRec): Promise<AnyRec> 
   });
 }
 
+export type HydratedProjectUpdate = {
+  id: string;
+  body: string;
+  health: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  author: string | null;
+  url: string | null;
+};
+
+function stableDate(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === "string" ? value : null;
+}
+
+export async function listProjectUpdates(
+  project: AnyRec,
+  pagination: PaginationRequest,
+): Promise<CollectionResult<HydratedProjectUpdate>> {
+  return withLinearErrors(async () => {
+    if (typeof project.projectUpdates !== "function") {
+      return {
+        nodes: [],
+        totalCount: 0,
+        pagination: { endCursor: null, hasNextPage: false, pagesFetched: 1, capped: false },
+      };
+    }
+    const result = await paginate<AnyRec>(pagination, ({ first, after }) =>
+      project.projectUpdates({ first, ...(after ? { after } : {}) }));
+    const nodes = await Promise.all(result.nodes.map(async (update) => {
+      const author = await awaitRel(update.user ?? update.author);
+      return {
+        id: String(update.id ?? ""),
+        body: typeof update.body === "string" ? update.body : "",
+        health: String(update.health ?? "unknown"),
+        createdAt: stableDate(update.createdAt),
+        updatedAt: stableDate(update.updatedAt),
+        author: author?.name ?? author?.displayName ?? author?.email ?? null,
+        url: typeof update.url === "string" ? update.url : null,
+      };
+    }));
+    return { ...result, nodes };
+  });
+}
+
+export async function createProjectUpdate(input: {
+  projectId: string;
+  body?: string;
+  health?: string;
+}): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().createProjectUpdate(input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to create project update", "UNKNOWN");
+    }
+    const update = await awaitRel(payload?.projectUpdate);
+    if (!update?.id) {
+      throw new AxiError("Linear did not return the created project update", "UNKNOWN");
+    }
+    return update;
+  });
+}
+
 export async function createIssue(input: AnyRec): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
