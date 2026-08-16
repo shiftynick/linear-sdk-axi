@@ -25,6 +25,8 @@ Invoke with `npx -y linear-axi` when the binary is not on PATH.
 
 ```
 npx -y linear-axi
+npx -y linear-axi usage
+npx -y linear-axi usage issue
 npx -y linear-axi issue list
 npx -y linear-axi issue list --team <key>
 npx -y linear-axi issue list --assignee me --state started

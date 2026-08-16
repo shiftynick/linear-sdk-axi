@@ -22,6 +22,14 @@ describe("compiled CLI", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("prints the usage map without a Linear API key", () => {
+    const result = runBinary(["usage", "issue"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("tier: issue");
+    expect(result.stdout).toContain("linear-axi issue create");
+    expect(result.stderr).toBe("");
+  });
+
   it("returns a structured auth error without leaking a key", () => {
     const result = runBinary([]);
     expect(result.status).toBe(1);

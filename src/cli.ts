@@ -8,6 +8,7 @@ import { projectCommand, PROJECT_HELP } from "./commands/project.js";
 import { setupCommand, SETUP_HELP } from "./commands/setup.js";
 import { statusCommand, STATUS_HELP } from "./commands/status.js";
 import { teamCommand, TEAM_HELP } from "./commands/team.js";
+import { usageCommand, USAGE_HELP } from "./commands/usage.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
@@ -21,12 +22,14 @@ type MainOptions = {
 };
 
 export const TOP_HELP = `usage: linear-axi [command] [args] [flags]
-commands[9]:
-  (none)=dashboard, issue, project, team, me, status, workflow, doctor, setup
+commands[10]:
+  (none)=dashboard, usage, issue, project, team, me, status, workflow, doctor, setup
 flags[3]:
   --team (after command) space or equals form, --help, -v/-V/--version
 examples:
   linear-axi
+  linear-axi usage
+  linear-axi usage issue
   linear-axi issue list
   linear-axi issue list --team ENG
   linear-axi issue view ENG-123
@@ -38,6 +41,7 @@ examples:
 `;
 
 const COMMAND_HELP: Record<string, string> = {
+  usage: USAGE_HELP,
   issue: ISSUE_HELP,
   project: PROJECT_HELP,
   team: TEAM_HELP,
@@ -58,6 +62,7 @@ function withTeamContext(handler: CommandFn): CommandFn {
 }
 
 const COMMANDS: Record<string, CommandFn> = {
+  usage: withTeamContext(usageCommand),
   issue: withTeamContext(issueCommand),
   project: withTeamContext(projectCommand),
   team: withTeamContext(teamCommand),

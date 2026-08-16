@@ -22,6 +22,7 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | Command | What it does |
 | --- | --- |
 | linear-axi | Live dashboard: me, assigned issues (~20), counts by workflow state type |
+| linear-axi usage [topic] | Two-tier command map: overview, then exact forms for a topic |
 | linear-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team) |
 | linear-axi issue view <id> | Issue detail. Truncated description. --full, --comments |
 | linear-axi issue create --title | Create. --team required unless only one team. --dry-run |
@@ -40,6 +41,10 @@ Or install globally. Prefer npx when the binary is not on PATH.
 
 Global --team <key> comes AFTER the command. Flags are not allowed before the top-level command.
 Issue ids accept Linear identifiers (ENG-123) or UUIDs.
+
+Use `linear-axi usage` for the compact capability map, then `linear-axi usage issue`
+(or `project`, `team`, `account`, or `setup`) for exact command forms. This is the
+preferred discovery path; reserve `--help` for exhaustive flag detail.
 
 ## TOON output
 
