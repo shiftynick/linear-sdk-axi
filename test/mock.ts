@@ -20,6 +20,13 @@ export type MockUser = {
   name: string;
   email: string;
   displayName?: string;
+  organization?: MockOrganization;
+};
+
+export type MockOrganization = {
+  id: string;
+  name: string;
+  urlKey: string;
 };
 
 export type MockComment = {

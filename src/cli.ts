@@ -1,5 +1,6 @@
 import { runAxiCli } from "axi-sdk-js";
 import { parseTeamArgs, type TeamContext } from "./client.js";
+import { doctorCommand, DOCTOR_HELP } from "./commands/doctor.js";
 import { homeCommand } from "./commands/home.js";
 import { issueCommand, ISSUE_HELP } from "./commands/issue.js";
 import { meCommand, ME_HELP } from "./commands/me.js";
@@ -20,8 +21,8 @@ type MainOptions = {
 };
 
 export const TOP_HELP = `usage: linear-axi [command] [args] [flags]
-commands[8]:
-  (none)=dashboard, issue, project, team, me, status, workflow, setup
+commands[9]:
+  (none)=dashboard, issue, project, team, me, status, workflow, doctor, setup
 flags[3]:
   --team (after command) space or equals form, --help, -v/-V/--version
 examples:
@@ -32,6 +33,7 @@ examples:
   linear-axi issue create --title "Fix login" --team ENG
   linear-axi me
   linear-axi status --team ENG
+  linear-axi doctor
   linear-axi setup hooks
 `;
 
@@ -42,6 +44,7 @@ const COMMAND_HELP: Record<string, string> = {
   me: ME_HELP,
   status: STATUS_HELP,
   workflow: STATUS_HELP,
+  doctor: DOCTOR_HELP,
   setup: SETUP_HELP,
 };
 
@@ -61,6 +64,7 @@ const COMMANDS: Record<string, CommandFn> = {
   me: withTeamContext(meCommand),
   status: withTeamContext(statusCommand),
   workflow: withTeamContext(statusCommand),
+  doctor: withTeamContext(doctorCommand),
   setup: setupCommand,
 };
 

@@ -33,6 +33,7 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-axi team list | Teams: key, name, issue count |
 | linear-axi me | Viewer id, name, email, assigned issue count |
 | linear-axi status | Workflow states for default or --team team (workflow alias) |
+| linear-axi doctor | Verify auth and report read-only workspace/team access |
 | linear-axi setup hooks | Install SessionStart hooks (Claude Code, Codex, OpenCode) |
 | linear-axi --help | Top-level command index |
 | linear-axi -v / -V / --version | Print 0.1.0 (fast path, no API key) |
@@ -67,6 +68,10 @@ The field is never omitted. --full is suggested only when truncated.
 - 2 = usage error (VALIDATION_ERROR, unknown command/flag)
 
 Errors go to stdout as TOON (error, code, help). Never mix progress into stdout.
+
+`linear-axi doctor` is read-only. It verifies the configured key by loading the
+viewer, workspace, and accessible teams. Missing, invalid, or under-scoped keys
+return the normal structured error without echoing the key.
 
 ## Verification
 

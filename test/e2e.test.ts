@@ -30,4 +30,12 @@ describe("compiled CLI", () => {
     expect(result.stdout).not.toMatch(/lin_api/i);
     expect(result.stderr).toBe("");
   });
+
+  it("uses the same safe auth behavior for doctor", () => {
+    const result = runBinary(["doctor"]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("AUTH_REQUIRED");
+    expect(result.stdout).not.toMatch(/lin_api/i);
+    expect(result.stderr).toBe("");
+  });
 });
