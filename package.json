@@ -1,0 +1,42 @@
+{
+  "name": "linear-axi",
+  "version": "0.1.0",
+  "description": "AXI-compliant Linear CLI wrapping @linear/sdk — token-efficient TOON output for agents",
+  "type": "module",
+  "keywords": [
+    "linear",
+    "cli",
+    "agent",
+    "axi",
+    "toon"
+  ],
+  "bin": {
+    "linear-axi": "./dist/bin/linear-axi.js"
+  },
+  "files": [
+    "dist",
+    "skills/linear-axi",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && chmod +x dist/bin/linear-axi.js",
+    "test": "vitest run",
+    "dev": "tsx bin/linear-axi.ts"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@linear/sdk": "^62.0.0",
+    "@toon-format/toon": "^2.1.0",
+    "axi-sdk-js": "^0.1.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

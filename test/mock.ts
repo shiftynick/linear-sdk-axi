@@ -1,0 +1,355 @@
+import type { LinearLike } from "../src/client.js";
+
+export type MockState = {
+  id: string;
+  name: string;
+  type: string;
+  position: number;
+};
+
+export type MockTeam = {
+  id: string;
+  key: string;
+  name: string;
+  issueCount?: number;
+  states: MockState[];
+};
+
+export type MockUser = {
+  id: string;
+  name: string;
+  email: string;
+  displayName?: string;
+};
+
+export type MockComment = {
+  id: string;
+  body: string;
+  user?: MockUser;
+  createdAt?: string;
+};
+
+export type MockProject = {
+  id: string;
+  name: string;
+  state?: string;
+  progress?: number;
+  description?: string;
+  url?: string;
+  issueCount?: number;
+};
+
+export type MockIssue = {
+  id: string;
+  identifier: string;
+  title: string;
+  description?: string;
+  url?: string;
+  commentCount?: number;
+  state: MockState;
+  team: MockTeam;
+  assignee?: MockUser | null;
+  project?: MockProject | null;
+  comments?: MockComment[];
+};
+
+export type MockOptions = {
+  viewer?: MockUser;
+  issues?: MockIssue[];
+  teams?: MockTeam[];
+  projects?: MockProject[];
+  users?: MockUser[];
+};
+
+const DEFAULT_STATES: MockState[] = [
+  { id: "state-triage", name: "Triage", type: "triage", position: 0 },
+  { id: "state-backlog", name: "Backlog", type: "backlog", position: 1 },
+  { id: "state-todo", name: "Todo", type: "unstarted", position: 2 },
+  { id: "state-progress", name: "In Progress", type: "started", position: 3 },
+  { id: "state-done", name: "Done", type: "completed", position: 4 },
+  { id: "state-canceled", name: "Canceled", type: "canceled", position: 5 },
+];
+
+export const defaultViewer: MockUser = {
+  id: "user-1",
+  name: "Alice",
+  email: "alice@example.com",
+  displayName: "Alice",
+};
+
+export const defaultTeam: MockTeam = {
+  id: "team-1",
+  key: "ENG",
+  name: "Engineering",
+  issueCount: 2,
+  states: DEFAULT_STATES,
+};
+
+export function stateByType(type: string, team: MockTeam = defaultTeam): MockState {
+  const found = team.states.find((s) => s.type === type);
+  if (!found) throw new Error(`no state type ${type}`);
+  return found;
+}
+
+export function makeIssue(
+  partial: Partial<MockIssue> & Pick<MockIssue, "id" | "identifier" | "title">,
+): MockIssue {
+  return {
+    state: stateByType("started"),
+    team: defaultTeam,
+    assignee: defaultViewer,
+    description: "",
+    url: `https://linear.app/issue/${partial.identifier}`,
+    commentCount: 0,
+    comments: [],
+    ...partial,
+  };
+}
+
+function wrapTeam(team: MockTeam) {
+  return {
+    ...team,
+    states: async () => ({
+      nodes: team.states,
+      totalCount: team.states.length,
+    }),
+  };
+}
+
+function wrapIssue(issue: MockIssue) {
+  return {
+    id: issue.id,
+    identifier: issue.identifier,
+    title: issue.title,
+    description: issue.description ?? "",
+    url: issue.url,
+    commentCount: issue.commentCount ?? issue.comments?.length ?? 0,
+    state: Promise.resolve(issue.state),
+    team: Promise.resolve(wrapTeam(issue.team)),
+    assignee: Promise.resolve(issue.assignee ?? null),
+    project: Promise.resolve(issue.project ?? null),
+    comments: async () => ({
+      nodes: (issue.comments ?? []).map((c) => ({
+        ...c,
+        user: Promise.resolve(c.user ?? null),
+      })),
+      totalCount: issue.comments?.length ?? 0,
+    }),
+  };
+}
+
+function wrapProject(project: MockProject, issues: MockIssue[]) {
+  const related = issues.filter((i) => i.project?.id === project.id);
+  return {
+    ...project,
+    issues: async () => ({
+      nodes: related.map(wrapIssue),
+      totalCount: related.length,
+    }),
+  };
+}
+
+function connection<T>(nodes: T[], totalCount?: number) {
+  return {
+    nodes,
+    totalCount: totalCount ?? nodes.length,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
+export type MockSpies = {
+  createIssue: ReturnType<typeof createSpy>;
+  updateIssue: ReturnType<typeof createSpy>;
+  createComment: ReturnType<typeof createSpy>;
+};
+
+function createSpy() {
+  const calls: unknown[][] = [];
+  const fn = async (...args: unknown[]) => {
+    calls.push(args);
+    return fn.impl(...args);
+  };
+  fn.calls = calls;
+  fn.impl = async (..._args: unknown[]) => ({ success: true });
+  fn.mockImplementation = (impl: (...args: unknown[]) => Promise<unknown>) => {
+    fn.impl = impl;
+  };
+  return fn;
+}
+
+export function createMockLinear(options: MockOptions = {}): {
+  client: LinearLike;
+  spies: MockSpies;
+  issues: MockIssue[];
+} {
+  const viewer = options.viewer ?? defaultViewer;
+  const teams = options.teams ?? [defaultTeam];
+  const issues = [...(options.issues ?? [])];
+  const projects = options.projects ?? [];
+  const users = options.users ?? [viewer];
+
+  const spies: MockSpies = {
+    createIssue: createSpy(),
+    updateIssue: createSpy(),
+    createComment: createSpy(),
+  };
+
+  spies.createIssue.mockImplementation(async (input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const team =
+      teams.find((t) => t.id === rec.teamId) ?? teams[0] ?? defaultTeam;
+    const state =
+      team.states.find((s) => s.id === rec.stateId) ?? stateByType("unstarted", team);
+    const assignee =
+      users.find((u) => u.id === rec.assigneeId) ??
+      (rec.assigneeId ? { id: String(rec.assigneeId), name: "User", email: "" } : viewer);
+    const created = makeIssue({
+      id: `issue-${issues.length + 1}`,
+      identifier: `${team.key}-${100 + issues.length}`,
+      title: String(rec.title ?? ""),
+      description: typeof rec.description === "string" ? rec.description : "",
+      state,
+      team,
+      assignee,
+    });
+    issues.push(created);
+    return { success: true, issue: wrapIssue(created) };
+  });
+
+  spies.updateIssue.mockImplementation(async (id: unknown, input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const found = issues.find((i) => i.id === id || i.identifier === id);
+    if (!found) return { success: false };
+    if (typeof rec.title === "string") found.title = rec.title;
+    if (typeof rec.description === "string") found.description = rec.description;
+    if (typeof rec.stateId === "string") {
+      const st = found.team.states.find((s) => s.id === rec.stateId);
+      if (st) found.state = st;
+    }
+    if (typeof rec.assigneeId === "string") {
+      found.assignee = users.find((u) => u.id === rec.assigneeId) ?? found.assignee;
+    }
+    return { success: true, issue: wrapIssue(found) };
+  });
+
+  spies.createComment.mockImplementation(async (input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const found = issues.find((i) => i.id === rec.issueId);
+    const comment: MockComment = {
+      id: `comment-${Date.now()}`,
+      body: String(rec.body ?? ""),
+      user: viewer,
+    };
+    if (found) {
+      found.comments = [...(found.comments ?? []), comment];
+      found.commentCount = found.comments.length;
+    }
+    return { success: true, comment };
+  });
+
+  const client: LinearLike = {
+    viewer: Promise.resolve({
+      ...viewer,
+      assignedIssues: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
+        let assigned = issues.filter((i) => i.assignee?.id === viewer.id);
+        assigned = applyIssueFilter(assigned, opts?.filter);
+        const first = opts?.first ?? 30;
+        return connection(assigned.slice(0, first).map(wrapIssue), assigned.length);
+      },
+    }),
+    issues: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
+      let filtered = applyIssueFilter(issues, opts?.filter);
+      const first = opts?.first ?? 30;
+      return connection(filtered.slice(0, first).map(wrapIssue), filtered.length);
+    },
+    issue: async (id: string) => {
+      const found = issues.find((i) => i.id === id || i.identifier === id);
+      if (!found) {
+        const err = new Error(`Issue not found: ${id}`) as Error & { status: number };
+        err.status = 404;
+        throw err;
+      }
+      return wrapIssue(found);
+    },
+    teams: async () => connection(teams.map(wrapTeam)),
+    team: async (id: string) => {
+      const found = teams.find((t) => t.id === id || t.key === id);
+      if (!found) {
+        const err = new Error(`Team not found: ${id}`) as Error & { status: number };
+        err.status = 404;
+        throw err;
+      }
+      return wrapTeam(found);
+    },
+    projects: async (opts?: { first?: number }) => {
+      const first = opts?.first ?? 30;
+      return connection(
+        projects.slice(0, first).map((p) => wrapProject(p, issues)),
+        projects.length,
+      );
+    },
+    project: async (id: string) => {
+      const found = projects.find((p) => p.id === id || p.name === id);
+      if (!found) {
+        const err = new Error(`Project not found: ${id}`) as Error & { status: number };
+        err.status = 404;
+        throw err;
+      }
+      return wrapProject(found, issues);
+    },
+    createIssue: spies.createIssue as LinearLike["createIssue"],
+    updateIssue: spies.updateIssue as LinearLike["updateIssue"],
+    createComment: spies.createComment as LinearLike["createComment"],
+    users: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
+      let filtered = users;
+      const emailEq =
+        (opts?.filter as { email?: { eqIgnoreCase?: string } } | undefined)?.email
+          ?.eqIgnoreCase;
+      if (emailEq) {
+        filtered = users.filter(
+          (u) => u.email.toLowerCase() === emailEq.toLowerCase(),
+        );
+      }
+      const nameContains =
+        (opts?.filter as { name?: { containsIgnoreCase?: string } } | undefined)?.name
+          ?.containsIgnoreCase;
+      if (nameContains) {
+        filtered = users.filter((u) =>
+          u.name.toLowerCase().includes(nameContains.toLowerCase()),
+        );
+      }
+      return connection(filtered);
+    },
+    user: async (id: string) => users.find((u) => u.id === id) ?? null,
+  };
+
+  return { client, spies, issues };
+}
+
+function applyIssueFilter(
+  issues: MockIssue[],
+  filter?: Record<string, unknown>,
+): MockIssue[] {
+  if (!filter) return issues;
+  return issues.filter((issue) => {
+    const assignee = filter.assignee as { id?: { eq?: string } } | undefined;
+    if (assignee?.id?.eq && issue.assignee?.id !== assignee.id.eq) return false;
+    const team = filter.team as { id?: { eq?: string }; key?: { eq?: string } } | undefined;
+    if (team?.id?.eq && issue.team.id !== team.id.eq) return false;
+    if (team?.key?.eq && issue.team.key !== team.key.eq) return false;
+    const identifier = filter.identifier as { eq?: string } | undefined;
+    if (identifier?.eq && issue.identifier !== identifier.eq) return false;
+    const state = filter.state as
+      | { type?: { eq?: string; nin?: string[] }; name?: { eqIgnoreCase?: string } }
+      | undefined;
+    if (state?.type?.eq && issue.state.type !== state.type.eq) return false;
+    if (state?.type?.nin && state.type.nin.includes(issue.state.type)) return false;
+    if (
+      state?.name?.eqIgnoreCase &&
+      issue.state.name.toLowerCase() !== state.name.eqIgnoreCase.toLowerCase()
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
