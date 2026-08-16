@@ -49,6 +49,7 @@ describe("usage map", () => {
   it("includes safe project write forms in the project tier", async () => {
     const { out, exit } = await run(["usage", "project"]);
     expect(exit).toBe(0);
+    expect(out).toContain("linear-sdk-axi project status list");
     expect(out).toContain("linear-sdk-axi project create");
     expect(out).toContain("linear-sdk-axi project update");
     expect(out).toContain("--dry-run");

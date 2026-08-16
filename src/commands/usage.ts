@@ -105,13 +105,14 @@ const TOPICS: Record<string, UsageTopic> = {
     entries: [
       { goal: "list", command: "linear-sdk-axi project list [--team <key>]" },
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
+      { goal: "list project statuses", command: "linear-sdk-axi project status list" },
       {
         goal: "create safely",
-        command: "linear-sdk-axi project create --name \"...\" --team <key> [--target-date YYYY-MM-DD] --dry-run",
+        command: "linear-sdk-axi project create --name \"...\" --team <key> [--status <id|name|type>] [--target-date YYYY-MM-DD] --dry-run",
       },
       {
         goal: "change outcome details",
-        command: "linear-sdk-axi project update <id|name> [--priority 0-4] [--target-date YYYY-MM-DD|none] --dry-run",
+        command: "linear-sdk-axi project update <id|name> [--status <id|name|type>] [--priority 0-4] [--target-date YYYY-MM-DD|none] --dry-run",
       },
     ],
     next: [
