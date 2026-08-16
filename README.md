@@ -1,4 +1,4 @@
-# linear-sdk-axi
+# [linear-sdk-axi](https://github.com/shiftynick/linear-sdk-axi)
 
 Agent-ergonomic Linear CLI wrapping the official `@linear/sdk`. It is a direct-SDK alternative to the MCP-based `linear-axi` package, so agents do not need an MCP transport or local MCP server.
 
