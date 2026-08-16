@@ -321,6 +321,7 @@ export type MockSpies = {
   createIssue: ReturnType<typeof createSpy>;
   updateIssue: ReturnType<typeof createSpy>;
   createIssueRelation: ReturnType<typeof createSpy>;
+  deleteIssueRelation: ReturnType<typeof createSpy>;
   createComment: ReturnType<typeof createSpy>;
 };
 
@@ -365,6 +366,7 @@ export function createMockLinear(options: MockOptions = {}): {
     createIssue: createSpy(),
     updateIssue: createSpy(),
     createIssueRelation: createSpy(),
+    deleteIssueRelation: createSpy(),
     createComment: createSpy(),
   };
 
@@ -519,6 +521,13 @@ export function createMockLinear(options: MockOptions = {}): {
     };
   });
 
+  spies.deleteIssueRelation.mockImplementation(async (id: unknown) => {
+    const index = relations.findIndex((relation) => relation.id === id);
+    if (index === -1) return { success: false };
+    relations.splice(index, 1);
+    return { success: true };
+  });
+
   spies.createComment.mockImplementation(async (input: unknown) => {
     const rec = input as Record<string, unknown>;
     const found = issues.find((i) => i.id === rec.issueId);
@@ -648,6 +657,7 @@ export function createMockLinear(options: MockOptions = {}): {
     createIssue: spies.createIssue as LinearLike["createIssue"],
     updateIssue: spies.updateIssue as LinearLike["updateIssue"],
     createIssueRelation: spies.createIssueRelation as LinearLike["createIssueRelation"],
+    deleteIssueRelation: spies.deleteIssueRelation as LinearLike["deleteIssueRelation"],
     createComment: spies.createComment as LinearLike["createComment"],
     users: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
       let filtered = users;

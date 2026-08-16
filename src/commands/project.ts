@@ -50,8 +50,8 @@ subcommands: list, view <id|name>, status list, create, update <id|name>, update
 flags{list}: --team <key>, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --help
 flags{view}: --full, --issues, --team <key>, --limit (issue page size, default 20), --after <cursor>, --all --max-items <n>, --help
 flags{status list}: --limit (default 50)
-flags{create}: --name (required), --team (required unless only one team), --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
-flags{update}: --name, --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
+flags{create}: --name (required), --team (required unless only one team), --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
+flags{update}: --name, --description/--body/--body-file, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
 flags{updates list}: --limit (page size, default 20), --after <cursor>, --all --max-items <n>
 flags{updates create}: --body or --body-file, --health <on-track|at-risk|off-track>, --dry-run
 examples:

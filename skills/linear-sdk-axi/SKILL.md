@@ -71,6 +71,8 @@ npx -y linear-sdk-axi issue update <id> --cycle <cycle-id|none> --priority <0-4>
 npx -y linear-sdk-axi issue relation list <id>
 npx -y linear-sdk-axi issue relation list <id> --all --max-items 100
 npx -y linear-sdk-axi issue relation add <id> --blocks <id> --dry-run
+npx -y linear-sdk-axi issue relation remove <id> --id <relation-id> --dry-run
+npx -y linear-sdk-axi issue relation remove <id> --blocks <id> --dry-run
 npx -y linear-sdk-axi issue comment <id> --body "<text>"
 npx -y linear-sdk-axi issue comment <id> --body "<text>" --dry-run
 npx -y linear-sdk-axi issue comment list <id>

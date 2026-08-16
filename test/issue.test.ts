@@ -219,6 +219,29 @@ describe("issue view", () => {
     expect(full.out).not.toContain("truncated");
     expect(full.out).toContain(long.slice(-20));
   });
+
+  it("uses the fetched comment count when --comments is present", async () => {
+    const { client } = createMockLinear({
+      issues: [makeIssue({
+        id: "i-comments",
+        identifier: "ENG-43",
+        title: "Comment metadata",
+        commentCount: 0,
+        comments: [
+          { id: "c1", body: "First" },
+          { id: "c2", body: "Second" },
+        ],
+      })],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run(["issue", "view", "ENG-43", "--comments"]);
+
+    expect(exit).toBe(0);
+    expect(out).toContain("commentCount: 2");
+    expect(out).toContain("First");
+    expect(out).toContain("Second");
+  });
 });
 
 describe("issue create", () => {
@@ -565,6 +588,7 @@ describe("issue relations", () => {
 
     const listed = await run(["issue", "relation", "list", "ENG-71"]);
     expect(listed.exit).toBe(0);
+    expect(listed.out).toContain("relation-1");
     expect(listed.out).toContain("blocked-by");
     expect(listed.out).toContain("ENG-70 Publish API contract");
 
@@ -579,6 +603,84 @@ describe("issue relations", () => {
     expect(noOp.exit).toBe(0);
     expect(noOp.out).toContain("no-op");
     expect(spies.createIssueRelation.calls).toHaveLength(1);
+  });
+
+  it("plans and removes a semantic edge, then treats a repeat as a no-op", async () => {
+    const source = makeIssue({ id: "source-1", identifier: "ENG-70", title: "Source" });
+    const target = makeIssue({ id: "target-1", identifier: "ENG-71", title: "Target" });
+    const relation = { id: "rel-1", issueId: source.id, relatedIssueId: target.id, type: "blocks" };
+    const { client, spies, relations } = createMockLinear({
+      issues: [source, target],
+      relations: [relation],
+    });
+    setLinearClientForTests(client);
+
+    const planned = await run([
+      "issue", "relation", "remove", "ENG-70", "--blocks", "ENG-71", "--dry-run",
+    ]);
+    expect(planned.exit).toBe(0);
+    expect(planned.out).toContain("deleteIssueRelation");
+    expect(planned.out).toContain("id: rel-1");
+    expect(spies.deleteIssueRelation.calls).toHaveLength(0);
+
+    const removed = await run([
+      "issue", "relation", "remove", "ENG-70", "--blocks", "ENG-71",
+    ]);
+    expect(removed.exit).toBe(0);
+    expect(removed.out).toContain("action: removed");
+    expect(spies.deleteIssueRelation.calls[0][0]).toBe("rel-1");
+    expect(relations).toHaveLength(0);
+
+    const noOp = await run([
+      "issue", "relation", "remove", "ENG-70", "--blocks", "ENG-71",
+    ]);
+    expect(noOp.exit).toBe(0);
+    expect(noOp.out).toContain("already absent (no-op)");
+    expect(spies.deleteIssueRelation.calls).toHaveLength(1);
+  });
+
+  it("removes by relation id and rejects a missing id", async () => {
+    const source = makeIssue({ id: "source-1", identifier: "ENG-70", title: "Source" });
+    const target = makeIssue({ id: "target-1", identifier: "ENG-71", title: "Target" });
+    const { client, spies } = createMockLinear({
+      issues: [source, target],
+      relations: [{ id: "rel-1", issueId: source.id, relatedIssueId: target.id, type: "related" }],
+    });
+    setLinearClientForTests(client);
+
+    const removed = await run([
+      "issue", "relation", "remove", "ENG-70", "--id", "rel-1",
+    ]);
+    expect(removed.exit).toBe(0);
+    expect(spies.deleteIssueRelation.calls[0][0]).toBe("rel-1");
+
+    const missing = await run([
+      "issue", "relation", "remove", "ENG-70", "--id", "rel-missing",
+    ]);
+    expect(missing.exit).toBe(1);
+    expect(missing.out).toContain("NOT_FOUND");
+  });
+
+  it("rejects an ambiguous semantic relation and requires its id", async () => {
+    const source = makeIssue({ id: "source-1", identifier: "ENG-70", title: "Source" });
+    const target = makeIssue({ id: "target-1", identifier: "ENG-71", title: "Target" });
+    const { client, spies } = createMockLinear({
+      issues: [source, target],
+      relations: [
+        { id: "rel-1", issueId: source.id, relatedIssueId: target.id, type: "related" },
+        { id: "rel-2", issueId: target.id, relatedIssueId: source.id, type: "related" },
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run([
+      "issue", "relation", "remove", "ENG-70", "--related", "ENG-71",
+    ]);
+
+    expect(exit).toBe(2);
+    expect(out).toContain("More than one related relation matches");
+    expect(out).toContain("--id <relation-id>");
+    expect(spies.deleteIssueRelation.calls).toHaveLength(0);
   });
 });
 

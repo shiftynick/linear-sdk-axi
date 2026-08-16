@@ -20,6 +20,7 @@ import {
   createComment,
   createIssue,
   createIssueRelation,
+  deleteIssueRelation,
   getIssue,
   getIssueChildren,
   getIssueComments,
@@ -53,7 +54,7 @@ import {
 
 export const ISSUE_HELP = `usage: linear-sdk-axi issue <subcommand>
 subcommands[8]:
-  list, search <query>, view <id>, create, update <id>, relation <list|add>, comment <id>, comment list <id>, close <id>
+  list, search <query>, view <id>, create, update <id>, relation <list|add|remove>, comment <id>, comment list <id>, close <id>
 flags{list}:
   --team <key>, --project <id|name>, --assignee <me|userid|email|name>, --state <name|type>, --unblocked, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --fields <a,b,c>
 flags{search}:
@@ -61,13 +62,15 @@ flags{search}:
 flags{view}:
   --full, --comments, --sub-issues
 flags{create}:
-  --title (required), --team (required unless only one team), --description/--body, --assignee, --state, --project, --cycle <id>, --priority <0-4>, --estimate <n>, --due-date <YYYY-MM-DD>, --parent, --label (repeatable), --dry-run
+  --title (required), --team (required unless only one team), --description/--body/--body-file, --assignee, --state, --project, --cycle <id>, --priority <0-4>, --estimate <n>, --due-date <YYYY-MM-DD>, --parent, --label (repeatable), --dry-run
 flags{update}:
-  --title, --description/--body, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
+  --title, --description/--body/--body-file, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
 flags{relation list}:
   --limit (page size, default 50), --after <cursor>, --all --max-items <n>
 flags{relation add}:
   exactly one: --blocks, --blocked-by, --related, --duplicate-of; --dry-run
+flags{relation remove}:
+  --id <relation-id> or exactly one of --blocks, --blocked-by, --related, --duplicate-of; --dry-run
 flags{comment}:
   --body or --body-file (required), --reply-to <comment-id>, --dry-run
 flags{comment list}:
@@ -84,6 +87,7 @@ examples:
   linear-sdk-axi issue update ENG-123 --state Done --priority 2
   linear-sdk-axi issue relation list ENG-123
   linear-sdk-axi issue relation add ENG-123 --blocks ENG-124 --dry-run
+  linear-sdk-axi issue relation remove ENG-123 --blocks ENG-124 --dry-run
   linear-sdk-axi issue comment ENG-123 --body "Shipped"
   linear-sdk-axi issue comment list ENG-123
   linear-sdk-axi issue comment ENG-123 --reply-to <comment-id> --body "Reply"
@@ -321,6 +325,9 @@ async function viewIssueCommand(
   const withSubIssues = hasFlag(args, "--sub-issues");
   const issue = await getIssue(id);
   const hydrated = await hydrateIssue(issue);
+  const fetchedComments = withComments
+    ? (await getIssueComments(issue, singlePage(50))).nodes
+    : undefined;
   const parent = await getIssueParent(issue);
   const hydratedParent = parent ? await hydrateIssue(parent) : undefined;
   const truncated = !full && wasTruncated(hydrated.description, 500);
@@ -329,6 +336,7 @@ async function viewIssueCommand(
     : truncateBody(hydrated.description, 500);
   const item: Record<string, unknown> = {
     ...hydrated,
+    commentCount: fetchedComments?.length ?? hydrated.commentCount,
     description,
     parent: hydratedParent
       ? `${hydratedParent.identifier} ${hydratedParent.title}`.trim()
@@ -353,8 +361,7 @@ async function viewIssueCommand(
   ];
   const blocks: string[] = [renderDetail("issue", item, schema)];
   if (withComments) {
-    const comments = (await getIssueComments(issue, singlePage(50))).nodes;
-    const commentItems = comments.map((c) => ({
+    const commentItems = (fetchedComments ?? []).map((c) => ({
       id: c.id ?? null,
       author: c.author ?? null,
       body: full ? c.body : truncateBody(c.body, 800),
@@ -823,6 +830,7 @@ async function relationIssueCommand(
   const sub = args[1];
   if (sub === "list") return listIssueRelationsCommand(args, ctx);
   if (sub === "add") return addIssueRelationCommand(args, ctx);
+  if (sub === "remove") return removeIssueRelationCommand(args, ctx);
   throw new AxiError(
     `Unknown issue relation subcommand: ${sub ?? "(missing)"}`,
     "VALIDATION_ERROR",
@@ -841,6 +849,7 @@ async function listIssueRelationsCommand(
   const source = await hydrateIssue(issue);
   const relations = await getIssueRelations(issue, pagination);
   const items = relations.nodes.map((relation) => ({
+    id: relation.id,
     relation: relationLabel(relation.type, relation.direction),
     issue: `${relation.issue.identifier} ${relation.issue.title}`.trim(),
     state: relation.issue.state,
@@ -855,7 +864,7 @@ async function listIssueRelationsCommand(
     renderList(
       "relations",
       items,
-      [field("relation"), field("issue"), field("state")],
+      [field("id"), field("relation"), field("issue"), field("state")],
       "0 relations",
     ),
     renderPagination(relations.pagination),
@@ -942,6 +951,110 @@ async function addIssueRelationCommand(
           target: target.identifier,
         },
         [field("id"), field("source"), field("relation"), field("target")],
+      ),
+      renderHelp([
+        `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,
+      ]),
+    ]);
+  });
+}
+
+async function removeIssueRelationCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  assertNoUnknownFlags(
+    args,
+    ["--id", "--blocks", "--blocked-by", "--related", "--duplicate-of", "--dry-run", "--team"],
+    "issue relation remove",
+  );
+  const sourceArg = requirePositional(args, 2, "source issue id");
+  const relationId = optionalFlagArg(args, "--id");
+  const selected = RELATION_OPTIONS.filter((option) => hasValueFlag(args, option.flag));
+  if ((relationId ? 1 : 0) + selected.length !== 1) {
+    throw new AxiError(
+      "issue relation remove requires --id or exactly one semantic edge flag",
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const sourceIssue = await getIssue(sourceArg);
+  const source = await hydrateIssue(sourceIssue);
+  const relations = await getIssueRelations(sourceIssue, {
+    pageSize: 50,
+    all: true,
+    maxItems: 250,
+  });
+  let matches = relations.nodes;
+  let label: string;
+  let targetIdentifier: string;
+
+  if (relationId) {
+    matches = matches.filter((relation) => relation.id === relationId);
+    if (matches.length === 0) {
+      throw new AxiError(
+        `Relation ${relationId} was not found on ${source.identifier}`,
+        "NOT_FOUND",
+        [`Run \`linear-sdk-axi issue relation list ${source.identifier}\``],
+      );
+    }
+    label = relationLabel(matches[0].type, matches[0].direction);
+    targetIdentifier = matches[0].issue.identifier;
+  } else {
+    const option = selected[0];
+    const targetArg = optionalFlagArg(args, option.flag)!;
+    const target = await hydrateIssue(await getIssue(targetArg));
+    matches = matches.filter(
+      (relation) =>
+        relation.type === option.type &&
+        relation.issue.id === target.id &&
+        (option.direction === "either" || relation.direction === option.direction),
+    );
+    label = option.label;
+    targetIdentifier = target.identifier;
+    if (matches.length === 0) {
+      return renderOutput([
+        renderDetail(
+          "relation",
+          {
+            source: source.identifier,
+            relation: label,
+            target: targetIdentifier,
+            message: "already absent (no-op)",
+          },
+          [field("source"), field("relation"), field("target"), field("message")],
+        ),
+      ]);
+    }
+  }
+
+  if (matches.length > 1) {
+    throw new AxiError(
+      `More than one ${label} relation matches ${source.identifier} and ${targetIdentifier}`,
+      "VALIDATION_ERROR",
+      [
+        `Run \`linear-sdk-axi issue relation list ${source.identifier}\``,
+        "Retry with --id <relation-id>",
+      ],
+    );
+  }
+
+  const match = matches[0];
+  const dryRun = hasFlag(args, "--dry-run");
+  const suffix = teamFlagSuffix(ctx);
+  return plannedOrWrite(dryRun, "deleteIssueRelation", { id: match.id }, async () => {
+    await deleteIssueRelation(match.id);
+    return renderOutput([
+      renderDetail(
+        "relation",
+        {
+          id: match.id,
+          source: source.identifier,
+          relation: label,
+          target: targetIdentifier,
+          action: "removed",
+        },
+        [field("id"), field("source"), field("relation"), field("target"), field("action")],
       ),
       renderHelp([
         `Run \`linear-sdk-axi issue relation list ${source.identifier}${suffix}\` to inspect relations`,

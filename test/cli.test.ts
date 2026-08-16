@@ -123,8 +123,16 @@ describe("help and unknown input", () => {
     expect(out).toContain("view");
     expect(out).toContain("create");
     expect(out).toContain("update");
+    expect(out).toContain("relation <list|add|remove>");
+    expect(out).toContain("--body-file");
     expect(out).toContain("comment");
     expect(out).toContain("close");
+  });
+
+  it("project --help exposes body-file support", async () => {
+    const { out, exit } = await run(["project", "--help"]);
+    expect(exit).toBe(0);
+    expect(out).toContain("--description/--body/--body-file");
   });
 
   it("unknown command fails loud", async () => {

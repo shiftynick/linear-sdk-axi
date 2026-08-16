@@ -74,6 +74,10 @@ const TOPICS: Record<string, UsageTopic> = {
         command: "linear-sdk-axi issue relation add <id> --blocks <id> --dry-run",
       },
       {
+        goal: "remove relation safely",
+        command: "linear-sdk-axi issue relation remove <id> (--id <relation-id> | --blocks <id>) --dry-run",
+      },
+      {
         goal: "comment threads",
         command: "linear-sdk-axi issue comment list <id> [--full]",
       },
