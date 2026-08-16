@@ -24,6 +24,9 @@ import {
   stateByType,
 } from "./mock.js";
 
+let originalApiKey: string | undefined;
+let originalAuthFile: string | undefined;
+
 function capture() {
   const chunks: string[] = [];
   return {
@@ -46,6 +49,9 @@ async function run(argv: string[]): Promise<{ out: string; exit: number }> {
 
 beforeEach(() => {
   process.exitCode = undefined;
+  originalApiKey = process.env.LINEAR_API_KEY;
+  originalAuthFile = process.env.LINEAR_SDK_AXI_AUTH_FILE;
+  delete process.env.LINEAR_API_KEY;
   process.env.LINEAR_SDK_AXI_AUTH_FILE = join(
     tmpdir(),
     `linear-sdk-axi-cli-test-${process.pid}-${Date.now()}.json`,
@@ -55,7 +61,10 @@ beforeEach(() => {
 afterEach(() => {
   setLinearClientForTests(undefined);
   process.exitCode = undefined;
-  delete process.env.LINEAR_SDK_AXI_AUTH_FILE;
+  if (originalApiKey === undefined) delete process.env.LINEAR_API_KEY;
+  else process.env.LINEAR_API_KEY = originalApiKey;
+  if (originalAuthFile === undefined) delete process.env.LINEAR_SDK_AXI_AUTH_FILE;
+  else process.env.LINEAR_SDK_AXI_AUTH_FILE = originalAuthFile;
 });
 
 describe("version fast path", () => {

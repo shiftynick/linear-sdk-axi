@@ -166,9 +166,27 @@ running this. Do not put credentials in source control or paste them into chat.
 ## Maintainer release
 
 CI runs the complete test suite and an npm package dry-run on pull requests and
-`main`. The publish workflow is manual-only; after merging, configure the
-repository's `NPM_TOKEN` secret and run **Publish npm package** from GitHub
-Actions. It reruns tests, builds via `prepack`, and publishes with provenance.
+`main`. Publishing uses npm Trusted Publishing: the manual **Publish npm package**
+workflow receives a short-lived GitHub OIDC credential, so this repository has
+no `NPM_TOKEN` secret to create or rotate. It reruns tests, builds via
+`prepack`, and npm automatically attaches provenance.
+
+For the first release only, publish `linear-sdk-axi` interactively from a
+maintainer machine with npm 2FA enabled. npm requires the package to exist
+before a trusted publisher can be attached. Then, on npmjs.com, open
+**Packages -> linear-sdk-axi -> Settings -> Trusted publishing** and configure:
+
+| Field | Value |
+| --- | --- |
+| Provider | GitHub Actions |
+| Organization or user | `shiftynick` |
+| Repository | `linear-sdk-axi` |
+| Workflow filename | `publish.yml` |
+| Allowed action | `npm publish` |
+
+After the first release, select **Require two-factor authentication and
+disallow tokens** under **Publishing access**, and use the GitHub Actions
+workflow for every later release. Do not disable 2FA to create an npm token.
 
 For a local release check:
 
