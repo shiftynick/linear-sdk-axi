@@ -96,11 +96,12 @@ workspace access is in doubt.
 | linear-sdk-axi issue list | Assigned uncompleted issues (unless scoped); filter by `--project <id|name>`, assignee, state, or team; `--unblocked` excludes blocked work; cursor pagination |
 | linear-sdk-axi issue search <query> | Full-text issue search; optional team scope, comment text, and cursor pagination |
 | linear-sdk-axi issue view <id> | Issue detail and parent. Truncated description. `--full`, `--comments`, `--sub-issues` |
-| linear-sdk-axi issue create --title | Create. --team required unless only one team. Optional `--parent`; repeat `--label`. --dry-run |
+| linear-sdk-axi issue create --title | Create. --team required unless only one team. Description accepts `--body-file`; optional `--parent`; repeat `--label`. --dry-run |
 | linear-sdk-axi issue create/update scheduling | `--cycle <id>`, `--priority 0-4`, `--estimate <n>`, `--due-date YYYY-MM-DD`; updates can clear cycle/estimate/due date with `none` |
-| linear-sdk-axi issue update <id> | Update fields, `--parent <id|none>`, scheduling, or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
-| linear-sdk-axi issue relation list <id> | List outgoing and incoming issue relations with one resumable cursor |
+| linear-sdk-axi issue update <id> | Update fields (description accepts `--body-file`), `--parent <id|none>`, scheduling, or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
+| linear-sdk-axi issue relation list <id> | List outgoing and incoming issue relations with IDs and one resumable cursor |
 | linear-sdk-axi issue relation add <id> | Add `--blocks`, `--blocked-by`, `--related`, or `--duplicate-of` relation. Idempotent; `--dry-run` |
+| linear-sdk-axi issue relation remove <id> | Remove by `--id <relation-id>` or an unambiguous semantic edge. Idempotent semantic no-op; `--dry-run` |
 | linear-sdk-axi issue comment list <id> | List comments with thread parent IDs. --full for complete text; cursor pagination |
 | linear-sdk-axi issue comment <id> --body | Comment or reply with `--reply-to <comment-id>`. --body-file and --dry-run allowed |
 | linear-sdk-axi label list | Discover workspace labels, or labels usable by `--team <key>` |
@@ -108,8 +109,8 @@ workspace access is in doubt.
 | linear-sdk-axi project list | Projects: name, state, progress; cursor pagination |
 | linear-sdk-axi project view <id> | Project detail and state counts. `--issues` adds a paginated issue summary; `--full` shows the complete description |
 | linear-sdk-axi project status list | List action-ready project status IDs, names, and types |
-| linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, status, priority, start/target dates. --dry-run |
-| linear-sdk-axi project update <id> | Update name, description, status, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
+| linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description (`--body-file` supported), status, priority, start/target dates. --dry-run |
+| linear-sdk-axi project update <id> | Update name, description (`--body-file` supported), status, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
 | linear-sdk-axi project updates list <id> | List milestone updates with health, author, body, and cursor pagination |
 | linear-sdk-axi project updates create <id> | Post milestone body/health (`on-track`, `at-risk`, `off-track`). Supports `--body-file` and `--dry-run` |
 | linear-sdk-axi cycle list | Read-only cycles: id, name, state, progress. Optional `--team` |

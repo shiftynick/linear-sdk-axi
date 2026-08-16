@@ -898,6 +898,15 @@ export async function createIssueRelation(input: AnyRec): Promise<AnyRec> {
   });
 }
 
+export async function deleteIssueRelation(id: string): Promise<void> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().deleteIssueRelation(id);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to delete issue relation", "UNKNOWN");
+    }
+  });
+}
+
 export async function updateIssue(id: string, input: AnyRec): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
