@@ -65,6 +65,28 @@ Use npx: npx -y linear-sdk-axi
 
 Or install globally. Prefer npx when the binary is not on PATH.
 
+## For agents
+
+When you are pointed at this repository, add or load the bundled
+[`linear-sdk-axi` skill](skills/linear-sdk-axi/SKILL.md) as a project skill
+before acting. It supplies Linear's issue-first operating model and the safety
+rules behind this CLI. If your runtime cannot install project skills, read that
+file before using Linear.
+
+Then establish one authentication path without exposing secrets in source
+control or chat, and prove it with a read-only check:
+
+```powershell
+# Automation: set LINEAR_API_KEY in the runtime's secret store.
+# Interactive local use: npx -y linear-sdk-axi auth login --client-id <client-id>
+npx -y linear-sdk-axi doctor
+```
+
+Start discovery with `npx -y linear-sdk-axi usage`, then ask for a focused map
+such as `usage issue` or `usage project`. Prefer explicit, idempotent commands
+and `--dry-run` for writes; run `doctor` again whenever authentication or
+workspace access is in doubt.
+
 ## Commands
 
 | Command | What it does |
