@@ -52,6 +52,17 @@ export type MockProject = {
   targetDate?: string | null;
   statusId?: string;
   projectStatus?: MockProjectStatus | null;
+  updates?: MockProjectUpdate[];
+};
+
+export type MockProjectUpdate = {
+  id: string;
+  body?: string;
+  health?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  url?: string;
+  user?: MockUser;
 };
 
 export type MockProjectStatus = {
@@ -259,6 +270,13 @@ function wrapProject(
       related.map((issue) => wrapIssue(issue, issues, relations)),
       opts,
     ),
+    projectUpdates: async (opts?: { first?: number; after?: string }) => pagedConnection(
+      (project.updates ?? []).map((update) => ({
+        ...update,
+        user: Promise.resolve(update.user ?? null),
+      })),
+      opts,
+    ),
   };
 }
 
@@ -299,6 +317,7 @@ function pagedConnection<T>(
 export type MockSpies = {
   createProject: ReturnType<typeof createSpy>;
   updateProject: ReturnType<typeof createSpy>;
+  createProjectUpdate: ReturnType<typeof createSpy>;
   createIssue: ReturnType<typeof createSpy>;
   updateIssue: ReturnType<typeof createSpy>;
   createIssueRelation: ReturnType<typeof createSpy>;
@@ -342,6 +361,7 @@ export function createMockLinear(options: MockOptions = {}): {
   const spies: MockSpies = {
     createProject: createSpy(),
     updateProject: createSpy(),
+    createProjectUpdate: createSpy(),
     createIssue: createSpy(),
     updateIssue: createSpy(),
     createIssueRelation: createSpy(),
@@ -385,6 +405,23 @@ export function createMockLinear(options: MockOptions = {}): {
       found.targetDate = typeof rec.targetDate === "string" ? rec.targetDate : null;
     }
     return { success: true, project: wrapProject(found, issues, relations) };
+  });
+
+  spies.createProjectUpdate.mockImplementation(async (input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const project = projects.find((candidate) => candidate.id === rec.projectId);
+    if (!project) return { success: false };
+    const update: MockProjectUpdate = {
+      id: `project-update-${(project.updates?.length ?? 0) + 1}`,
+      body: typeof rec.body === "string" ? rec.body : "",
+      health: typeof rec.health === "string" ? rec.health : "onTrack",
+      createdAt: "2026-08-16T22:00:00.000Z",
+      updatedAt: "2026-08-16T22:00:00.000Z",
+      url: "https://linear.app/project/update/project-update-1",
+      user: viewer,
+    };
+    project.updates = [...(project.updates ?? []), update];
+    return { success: true, projectUpdate: Promise.resolve(update) };
   });
 
   spies.createIssue.mockImplementation(async (input: unknown) => {
@@ -607,6 +644,7 @@ export function createMockLinear(options: MockOptions = {}): {
     },
     createProject: spies.createProject as LinearLike["createProject"],
     updateProject: spies.updateProject as LinearLike["updateProject"],
+    createProjectUpdate: spies.createProjectUpdate as LinearLike["createProjectUpdate"],
     createIssue: spies.createIssue as LinearLike["createIssue"],
     updateIssue: spies.updateIssue as LinearLike["updateIssue"],
     createIssueRelation: spies.createIssueRelation as LinearLike["createIssueRelation"],
