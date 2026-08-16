@@ -30,13 +30,16 @@ npx -y linear-axi usage issue
 npx -y linear-axi issue list
 npx -y linear-axi issue list --team <key>
 npx -y linear-axi issue list --assignee me --state started
+npx -y linear-axi issue search "login timeout" --team <key>
+npx -y linear-axi issue search "retry queue" --comments
 npx -y linear-axi issue view <id>
 npx -y linear-axi issue view <id> --full
 npx -y linear-axi issue view <id> --comments
-npx -y linear-axi issue create --title "<title>" --team <key>
+npx -y linear-axi issue create --title "<title>" --team <key> --label "<name|id>"
 npx -y linear-axi issue create --title "<title>" --team <key> --dry-run
 npx -y linear-axi issue update <id> --title "<title>"
 npx -y linear-axi issue update <id> --state <name-or-type> --dry-run
+npx -y linear-axi issue update <id> --add-label "<name|id>" --remove-label "<name|id>"
 npx -y linear-axi issue comment <id> --body "<text>"
 npx -y linear-axi issue comment <id> --body "<text>" --dry-run
 npx -y linear-axi issue close <id>

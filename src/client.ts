@@ -5,7 +5,9 @@ import { AxiError, authRequiredError } from "./errors.js";
 export type LinearLike = {
   viewer: Promise<any>;
   issues: (opts?: any) => Promise<any>;
+  searchIssues: (term: string, opts?: any) => Promise<any>;
   issue: (id: string) => Promise<any>;
+  issueLabels: (opts?: any) => Promise<any>;
   teams: (opts?: any) => Promise<any>;
   team: (id: string) => Promise<any>;
   projects: (opts?: any) => Promise<any>;

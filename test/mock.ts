@@ -46,6 +46,13 @@ export type MockProject = {
   issueCount?: number;
 };
 
+export type MockLabel = {
+  id: string;
+  name: string;
+  teamId?: string;
+  isGroup?: boolean;
+};
+
 export type MockIssue = {
   id: string;
   identifier: string;
@@ -57,6 +64,7 @@ export type MockIssue = {
   team: MockTeam;
   assignee?: MockUser | null;
   project?: MockProject | null;
+  labels?: MockLabel[];
   comments?: MockComment[];
 };
 
@@ -65,6 +73,7 @@ export type MockOptions = {
   issues?: MockIssue[];
   teams?: MockTeam[];
   projects?: MockProject[];
+  labels?: MockLabel[];
   users?: MockUser[];
 };
 
@@ -108,6 +117,7 @@ export function makeIssue(
     description: "",
     url: `https://linear.app/issue/${partial.identifier}`,
     commentCount: 0,
+    labels: [],
     comments: [],
     ...partial,
   };
@@ -131,6 +141,7 @@ function wrapIssue(issue: MockIssue) {
     description: issue.description ?? "",
     url: issue.url,
     commentCount: issue.commentCount ?? issue.comments?.length ?? 0,
+    labelIds: issue.labels?.map((label) => label.id) ?? [],
     state: Promise.resolve(issue.state),
     team: Promise.resolve(wrapTeam(issue.team)),
     assignee: Promise.resolve(issue.assignee ?? null),
@@ -142,6 +153,7 @@ function wrapIssue(issue: MockIssue) {
       })),
       totalCount: issue.comments?.length ?? 0,
     }),
+    labels: async () => connection(issue.labels ?? []),
   };
 }
 
@@ -193,6 +205,7 @@ export function createMockLinear(options: MockOptions = {}): {
   const teams = options.teams ?? [defaultTeam];
   const issues = [...(options.issues ?? [])];
   const projects = options.projects ?? [];
+  const labels = options.labels ?? [];
   const users = options.users ?? [viewer];
 
   const spies: MockSpies = {
@@ -210,6 +223,9 @@ export function createMockLinear(options: MockOptions = {}): {
     const assignee =
       users.find((u) => u.id === rec.assigneeId) ??
       (rec.assigneeId ? { id: String(rec.assigneeId), name: "User", email: "" } : viewer);
+    const issueLabels = Array.isArray(rec.labelIds)
+      ? labels.filter((label) => rec.labelIds.includes(label.id))
+      : [];
     const created = makeIssue({
       id: `issue-${issues.length + 1}`,
       identifier: `${team.key}-${100 + issues.length}`,
@@ -218,6 +234,7 @@ export function createMockLinear(options: MockOptions = {}): {
       state,
       team,
       assignee,
+      labels: issueLabels,
     });
     issues.push(created);
     return { success: true, issue: wrapIssue(created) };
@@ -235,6 +252,21 @@ export function createMockLinear(options: MockOptions = {}): {
     }
     if (typeof rec.assigneeId === "string") {
       found.assignee = users.find((u) => u.id === rec.assigneeId) ?? found.assignee;
+    }
+    if (Array.isArray(rec.labelIds)) {
+      found.labels = labels.filter((label) => rec.labelIds.includes(label.id));
+    }
+    if (Array.isArray(rec.addedLabelIds)) {
+      const existing = found.labels ?? [];
+      const additions = labels.filter(
+        (label) => rec.addedLabelIds.includes(label.id) && !existing.some((item) => item.id === label.id),
+      );
+      found.labels = [...existing, ...additions];
+    }
+    if (Array.isArray(rec.removedLabelIds)) {
+      found.labels = (found.labels ?? []).filter(
+        (label) => !rec.removedLabelIds.includes(label.id),
+      );
     }
     return { success: true, issue: wrapIssue(found) };
   });
@@ -269,6 +301,26 @@ export function createMockLinear(options: MockOptions = {}): {
       const first = opts?.first ?? 30;
       return connection(filtered.slice(0, first).map(wrapIssue), filtered.length);
     },
+    searchIssues: async (
+      term: string,
+      opts?: { first?: number; teamId?: string; includeComments?: boolean },
+    ) => {
+      const query = term.toLowerCase();
+      let matched = issues.filter((issue) => {
+        const content = [
+          issue.identifier,
+          issue.title,
+          issue.description ?? "",
+          ...(opts?.includeComments ? (issue.comments ?? []).map((comment) => comment.body) : []),
+        ]
+          .join("\n")
+          .toLowerCase();
+        return content.includes(query);
+      });
+      if (opts?.teamId) matched = matched.filter((issue) => issue.team.id === opts.teamId);
+      const first = opts?.first ?? 20;
+      return connection(matched.slice(0, first).map(wrapIssue), matched.length);
+    },
     issue: async (id: string) => {
       const found = issues.find((i) => i.id === id || i.identifier === id);
       if (!found) {
@@ -279,6 +331,10 @@ export function createMockLinear(options: MockOptions = {}): {
       return wrapIssue(found);
     },
     teams: async () => connection(teams.map(wrapTeam)),
+    issueLabels: async (opts?: { first?: number }) => {
+      const first = opts?.first ?? 250;
+      return connection(labels.slice(0, first), labels.length);
+    },
     team: async (id: string) => {
       const found = teams.find((t) => t.id === id || t.key === id);
       if (!found) {

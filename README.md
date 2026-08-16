@@ -30,9 +30,10 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-axi | Live dashboard: me, assigned issues (~20), counts by workflow state type |
 | linear-axi usage [topic] | Two-tier command map: overview, then exact forms for a topic |
 | linear-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team) |
+| linear-axi issue search <query> | Full-text issue search; optional team scope and comment text |
 | linear-axi issue view <id> | Issue detail. Truncated description. --full, --comments |
-| linear-axi issue create --title | Create. --team required unless only one team. --dry-run |
-| linear-axi issue update <id> | Update fields. Idempotent no-op if already in desired state. --dry-run |
+| linear-axi issue create --title | Create. --team required unless only one team. Repeat `--label`. --dry-run |
+| linear-axi issue update <id> | Update fields or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
 | linear-axi issue comment <id> --body | Comment. --body-file allowed. --dry-run |
 | linear-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-axi project list | Projects: name, state, progress |
@@ -70,6 +71,7 @@ The field is never omitted. --full is suggested only when truncated.
 - No interactive prompts.
 - --dry-run on create / update / comment / close prints the planned mutation and does not write.
 - Close and update are idempotent: already-in-desired-state is a no-op, exit 0.
+- Create accepts repeatable `--label <name|id>`; update accepts repeatable `--add-label` and `--remove-label` without replacing unrelated labels.
 - Unknown flags fail loud (VALIDATION_ERROR) and list valid flags inline.
 
 ## Exit codes

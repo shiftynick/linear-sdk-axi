@@ -5,6 +5,7 @@ import {
   hasFlag,
   optionalFlagArg,
   parseLimit,
+  repeatableFlagArgs,
   requirePositional,
   takeBoolFlag,
 } from "../args.js";
@@ -19,6 +20,7 @@ import {
   createIssue,
   getIssue,
   getIssueComments,
+  getIssueLabels,
   getViewer,
   hydrateIssue,
   isStateType,
@@ -28,6 +30,8 @@ import {
   resolveStateId,
   resolveTeam,
   resolveTeamFromContext,
+  resolveLabelIds,
+  searchIssues,
   updateIssue,
 } from "../linear.js";
 import {
@@ -42,15 +46,17 @@ import {
 
 export const ISSUE_HELP = `usage: linear-axi issue <subcommand>
 subcommands[6]:
-  list, view <id>, create, update <id>, comment <id>, close <id>
+  list, search <query>, view <id>, create, update <id>, comment <id>, close <id>
 flags{list}:
   --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --limit (default 30), --fields <a,b,c>
+flags{search}:
+  --team <key>, --limit (default 20), --comments
 flags{view}:
   --full, --comments
 flags{create}:
-  --title (required), --team (required unless only one team), --description/--body, --assignee, --state, --project, --dry-run
+  --title (required), --team (required unless only one team), --description/--body, --assignee, --state, --project, --label (repeatable), --dry-run
 flags{update}:
-  --title, --description/--body, --assignee, --state, --project, --dry-run
+  --title, --description/--body, --assignee, --state, --project, --add-label/--remove-label (repeatable), --dry-run
 flags{comment}:
   --body or --body-file (required), --dry-run
 flags{close}:
@@ -58,6 +64,7 @@ flags{close}:
 examples:
   linear-axi issue list
   linear-axi issue list --team ENG --state started
+  linear-axi issue search "login timeout" --team ENG
   linear-axi issue view ENG-123
   linear-axi issue view ENG-123 --full --comments
   linear-axi issue create --title "Fix login" --team ENG --dry-run
@@ -118,6 +125,8 @@ export async function issueCommand(
   switch (sub) {
     case "list":
       return listIssuesCommand(args, ctx);
+    case "search":
+      return searchIssuesCommand(args, ctx);
     case "view":
       return viewIssueCommand(args, ctx);
     case "create":
@@ -136,6 +145,36 @@ export async function issueCommand(
         ["Run `linear-axi issue --help`"],
       );
   }
+}
+
+async function searchIssuesCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  assertNoUnknownFlags(args, ["--team", "--limit", "--comments"], "issue search");
+  const term = requirePositional(args, 1, "search query");
+  const limit = parseLimit(getFlag(args, "--limit"), 20);
+  const includeComments = hasFlag(args, "--comments");
+  let teamId: string | undefined;
+  if (ctx?.teamKey) {
+    const team = await resolveTeamFromContext(ctx);
+    teamId = team.id ? String(team.id) : undefined;
+  }
+  const result = await searchIssues(term, { first: limit, teamId, includeComments });
+  const hydrated = await Promise.all(result.nodes.map(hydrateIssue));
+  const suffix = teamFlagSuffix(ctx);
+  return renderOutput([
+    formatCountLine({
+      count: hydrated.length,
+      limit,
+      ...(teamId ? {} : { totalCount: result.totalCount }),
+    }),
+    renderList("issues", hydrated, listSchema, "0 matching issues"),
+    renderHelp([
+      `Run \`linear-axi issue view <id>${suffix}\` for details`,
+      `Run \`linear-axi issue search "..."${suffix}\` to refine the query`,
+    ]),
+  ]);
 }
 
 function buildIssueFilter(opts: {
@@ -323,6 +362,7 @@ async function createIssueCommand(
       "--assignee",
       "--state",
       "--project",
+      "--label",
       "--dry-run",
     ],
     "issue create",
@@ -341,6 +381,7 @@ async function createIssueCommand(
   const assigneeRaw = optionalFlagArg(args, "--assignee");
   const stateRaw = optionalFlagArg(args, "--state");
   const projectRaw = optionalFlagArg(args, "--project");
+  const labelRaw = repeatableFlagArgs(args, "--label");
 
   const team = await resolveTeam(ctx?.teamKey);
   const input: Record<string, unknown> = {
@@ -351,17 +392,25 @@ async function createIssueCommand(
   if (assigneeRaw) input.assigneeId = await resolveAssigneeId(assigneeRaw);
   if (stateRaw) input.stateId = await resolveStateId(team, stateRaw);
   if (projectRaw) input.projectId = await resolveProjectId(projectRaw);
+  if (labelRaw.length > 0) {
+    input.labelIds = await resolveLabelIds(labelRaw, { teamId: String(team.id) });
+  }
 
   const suffix = teamFlagSuffix(ctx) || ` --team ${team.key ?? team.id}`;
   return plannedOrWrite(dryRun, "createIssue", input, async () => {
     const created = await createIssue(input);
     const hydrated = await hydrateIssue(created);
+    const labels = labelRaw.length > 0 ? await getIssueLabels(created) : [];
     return renderOutput([
-      renderDetail("issue", hydrated, [
+      renderDetail("issue", {
+        ...hydrated,
+        labels: labels.map((label) => label.name ?? label.id).join(", "),
+      }, [
         field("identifier"),
         field("title"),
         field("state"),
         field("team"),
+        ...(labelRaw.length > 0 ? [field("labels")] : []),
         field("url"),
       ]),
       renderHelp([
@@ -390,6 +439,8 @@ async function updateIssueCommand(
       "--assignee",
       "--state",
       "--project",
+      "--add-label",
+      "--remove-label",
       "--dry-run",
       "--team",
     ],
@@ -405,13 +456,17 @@ async function updateIssueCommand(
   const assigneeRaw = optionalFlagArg(args, "--assignee");
   const stateRaw = optionalFlagArg(args, "--state");
   const projectRaw = optionalFlagArg(args, "--project");
+  const addLabelRaw = repeatableFlagArgs(args, "--add-label");
+  const removeLabelRaw = repeatableFlagArgs(args, "--remove-label");
 
   if (
     title === undefined &&
     description === undefined &&
     assigneeRaw === undefined &&
     stateRaw === undefined &&
-    projectRaw === undefined
+    projectRaw === undefined &&
+    addLabelRaw.length === 0 &&
+    removeLabelRaw.length === 0
   ) {
     throw new AxiError(
       "issue update requires at least one of --title, --body/--description, --assignee, --state, --project",
@@ -449,6 +504,28 @@ async function updateIssueCommand(
     const projectId = await resolveProjectId(projectRaw);
     planned.projectId = projectId;
     if (projectId !== current.projectId) input.projectId = projectId;
+  }
+  if (addLabelRaw.length > 0 || removeLabelRaw.length > 0) {
+    const [addLabelIds, removeLabelIds] = await Promise.all([
+      resolveLabelIds(addLabelRaw, { teamId: current.teamId }),
+      resolveLabelIds(removeLabelRaw, { teamId: current.teamId }),
+    ]);
+    const conflicting = addLabelIds.filter((id) => removeLabelIds.includes(id));
+    if (conflicting.length > 0) {
+      throw new AxiError(
+        "A label cannot be added and removed in the same update",
+        "VALIDATION_ERROR",
+      );
+    }
+    const currentLabelIds = Array.isArray(current.raw.labelIds)
+      ? current.raw.labelIds.map(String)
+      : [];
+    planned.addedLabelIds = addLabelIds;
+    planned.removedLabelIds = removeLabelIds;
+    const addedLabelIds = addLabelIds.filter((id) => !currentLabelIds.includes(id));
+    const removedLabelIds = removeLabelIds.filter((id) => currentLabelIds.includes(id));
+    if (addedLabelIds.length > 0) input.addedLabelIds = addedLabelIds;
+    if (removedLabelIds.length > 0) input.removedLabelIds = removedLabelIds;
   }
 
   const suffix = teamFlagSuffix(ctx);
@@ -491,13 +568,20 @@ async function updateIssueCommand(
     async () => {
       const updated = await updateIssue(current.id, input);
       const hydrated = await hydrateIssue(updated);
+      const requestedLabelChanges =
+        addLabelRaw.length > 0 || removeLabelRaw.length > 0;
+      const labels = requestedLabelChanges ? await getIssueLabels(updated) : [];
       return renderOutput([
-        renderDetail("issue", hydrated, [
+        renderDetail("issue", {
+          ...hydrated,
+          labels: labels.map((label) => label.name ?? label.id).join(", "),
+        }, [
           field("identifier"),
           field("title"),
           field("state"),
           field("assignee"),
           field("team"),
+          ...(requestedLabelChanges ? [field("labels")] : []),
         ]),
         renderHelp([
           `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
