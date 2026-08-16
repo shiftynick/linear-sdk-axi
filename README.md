@@ -34,7 +34,8 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-axi issue view <id> | Issue detail. Truncated description. --full, --comments |
 | linear-axi issue create --title | Create. --team required unless only one team. Repeat `--label`. --dry-run |
 | linear-axi issue update <id> | Update fields or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
-| linear-axi issue comment <id> --body | Comment. --body-file allowed. --dry-run |
+| linear-axi issue comment list <id> | List comments with thread parent IDs. --full for complete text |
+| linear-axi issue comment <id> --body | Comment or reply with `--reply-to <comment-id>`. --body-file and --dry-run allowed |
 | linear-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-axi project list | Projects: name, state, progress |
 | linear-axi project view <id> | Project detail. Truncated description. --full |
