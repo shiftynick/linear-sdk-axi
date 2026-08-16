@@ -46,6 +46,10 @@ export type MockProject = {
   description?: string;
   url?: string;
   issueCount?: number;
+  teamIds?: string[];
+  priority?: number;
+  startDate?: string | null;
+  targetDate?: string | null;
 };
 
 export type MockLabel = {
@@ -262,6 +266,8 @@ function connection<T>(nodes: T[], totalCount?: number) {
 }
 
 export type MockSpies = {
+  createProject: ReturnType<typeof createSpy>;
+  updateProject: ReturnType<typeof createSpy>;
   createIssue: ReturnType<typeof createSpy>;
   updateIssue: ReturnType<typeof createSpy>;
   createIssueRelation: ReturnType<typeof createSpy>;
@@ -298,11 +304,46 @@ export function createMockLinear(options: MockOptions = {}): {
   const users = options.users ?? [viewer];
 
   const spies: MockSpies = {
+    createProject: createSpy(),
+    updateProject: createSpy(),
     createIssue: createSpy(),
     updateIssue: createSpy(),
     createIssueRelation: createSpy(),
     createComment: createSpy(),
   };
+
+  spies.createProject.mockImplementation(async (input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const created: MockProject = {
+      id: `project-${projects.length + 1}`,
+      name: String(rec.name ?? ""),
+      state: "planned",
+      description: typeof rec.description === "string" ? rec.description : "",
+      priority: typeof rec.priority === "number" ? rec.priority : 0,
+      startDate: typeof rec.startDate === "string" ? rec.startDate : null,
+      targetDate: typeof rec.targetDate === "string" ? rec.targetDate : null,
+      teamIds: Array.isArray(rec.teamIds) ? rec.teamIds.map(String) : [],
+      url: `https://linear.app/project/project-${projects.length + 1}`,
+    };
+    projects.push(created);
+    return { success: true, project: wrapProject(created, issues, relations) };
+  });
+
+  spies.updateProject.mockImplementation(async (id: unknown, input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const found = projects.find((project) => project.id === id || project.name === id);
+    if (!found) return { success: false };
+    if (typeof rec.name === "string") found.name = rec.name;
+    if (typeof rec.description === "string") found.description = rec.description;
+    if (typeof rec.priority === "number") found.priority = rec.priority;
+    if (Object.prototype.hasOwnProperty.call(rec, "startDate")) {
+      found.startDate = typeof rec.startDate === "string" ? rec.startDate : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, "targetDate")) {
+      found.targetDate = typeof rec.targetDate === "string" ? rec.targetDate : null;
+    }
+    return { success: true, project: wrapProject(found, issues, relations) };
+  });
 
   spies.createIssue.mockImplementation(async (input: unknown) => {
     const rec = input as Record<string, unknown>;
@@ -493,11 +534,17 @@ export function createMockLinear(options: MockOptions = {}): {
       }
       return wrapCycle(found);
     },
-    projects: async (opts?: { first?: number }) => {
+    projects: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
       const first = opts?.first ?? 30;
+      const teamId = (
+        opts?.filter as { accessibleTeams?: { id?: { eq?: string } } } | undefined
+      )?.accessibleTeams?.id?.eq;
+      const matching = teamId
+        ? projects.filter((project) => project.teamIds?.includes(teamId))
+        : projects;
       return connection(
-        projects.slice(0, first).map((p) => wrapProject(p, issues, relations)),
-        projects.length,
+        matching.slice(0, first).map((p) => wrapProject(p, issues, relations)),
+        matching.length,
       );
     },
     project: async (id: string) => {
@@ -509,6 +556,8 @@ export function createMockLinear(options: MockOptions = {}): {
       }
       return wrapProject(found, issues, relations);
     },
+    createProject: spies.createProject as LinearLike["createProject"],
+    updateProject: spies.updateProject as LinearLike["updateProject"],
     createIssue: spies.createIssue as LinearLike["createIssue"],
     updateIssue: spies.updateIssue as LinearLike["updateIssue"],
     createIssueRelation: spies.createIssueRelation as LinearLike["createIssueRelation"],
