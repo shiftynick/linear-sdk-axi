@@ -93,19 +93,19 @@ workspace access is in doubt.
 | --- | --- |
 | linear-sdk-axi | Live dashboard: me, assigned issues (~20), counts by workflow state type |
 | linear-sdk-axi usage [topic] | Two-tier command map: overview, then exact forms for a topic |
-| linear-sdk-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team); `--unblocked` excludes blocked work |
-| linear-sdk-axi issue search <query> | Full-text issue search; optional team scope and comment text |
+| linear-sdk-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team); `--unblocked` excludes blocked work; cursor pagination |
+| linear-sdk-axi issue search <query> | Full-text issue search; optional team scope, comment text, and cursor pagination |
 | linear-sdk-axi issue view <id> | Issue detail and parent. Truncated description. `--full`, `--comments`, `--sub-issues` |
 | linear-sdk-axi issue create --title | Create. --team required unless only one team. Optional `--parent`; repeat `--label`. --dry-run |
 | linear-sdk-axi issue create/update scheduling | `--cycle <id>`, `--priority 0-4`, `--estimate <n>`, `--due-date YYYY-MM-DD`; updates can clear cycle/estimate/due date with `none` |
 | linear-sdk-axi issue update <id> | Update fields, `--parent <id|none>`, scheduling, or repeat `--add-label`/`--remove-label`. Idempotent no-op. --dry-run |
-| linear-sdk-axi issue relation list <id> | List outgoing and incoming issue relations |
+| linear-sdk-axi issue relation list <id> | List outgoing and incoming issue relations with one resumable cursor |
 | linear-sdk-axi issue relation add <id> | Add `--blocks`, `--blocked-by`, `--related`, or `--duplicate-of` relation. Idempotent; `--dry-run` |
-| linear-sdk-axi issue comment list <id> | List comments with thread parent IDs. --full for complete text |
+| linear-sdk-axi issue comment list <id> | List comments with thread parent IDs. --full for complete text; cursor pagination |
 | linear-sdk-axi issue comment <id> --body | Comment or reply with `--reply-to <comment-id>`. --body-file and --dry-run allowed |
 | linear-sdk-axi label list | Discover workspace labels, or labels usable by `--team <key>` |
 | linear-sdk-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
-| linear-sdk-axi project list | Projects: name, state, progress |
+| linear-sdk-axi project list | Projects: name, state, progress; cursor pagination |
 | linear-sdk-axi project view <id> | Project detail. Truncated description. --full |
 | linear-sdk-axi project status list | List action-ready project status IDs, names, and types |
 | linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, status, priority, start/target dates. --dry-run |
@@ -135,6 +135,22 @@ Default list schemas are 3-4 fields (identifier, title, state, team).
 Use --fields on issue list for extras (url, assignee, description, stateType, commentCount, id).
 Empty lists are explicit, never blank: issues: 0 assigned issues
 Counts: count: 20 of 47 total
+
+## Pagination
+
+Issue lists, issue search, project lists, comment lists, and relation lists emit
+`pagination` metadata with `endCursor`, `hasNextPage`, `pagesFetched`, and
+`capped`. Use `--after <endCursor>` to fetch the next page. `--limit` controls
+the page size.
+
+Multi-page traversal is always explicitly bounded:
+
+```text
+linear-sdk-axi issue list --team ENG --limit 50 --all --max-items 200
+```
+
+`--all` without `--max-items` fails validation; the CLI never starts an
+unbounded collection read.
 
 ## Truncation and --full
 

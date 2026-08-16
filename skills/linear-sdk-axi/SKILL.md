@@ -36,6 +36,8 @@ Invoke with `npx -y linear-sdk-axi` when the binary is not on PATH.
 - Errors are structured on stdout: error, code, help[]
 - Exit 0 success (including no-ops), 1 error, 2 usage
 - Flags come after the command. Global --team <key> is after the command.
+- Paginated collections emit an `endCursor`. Resume with `--after <cursor>`.
+  Multi-page reads require an explicit cap: `--all --max-items <n>`.
 
 ## Commands
 
@@ -47,8 +49,11 @@ npx -y linear-sdk-axi issue list
 npx -y linear-sdk-axi issue list --team <key>
 npx -y linear-sdk-axi issue list --assignee me --state started
 npx -y linear-sdk-axi issue list --unblocked
+npx -y linear-sdk-axi issue list --team <key> --limit 50 --all --max-items 200
+npx -y linear-sdk-axi issue list --team <key> --after <cursor>
 npx -y linear-sdk-axi issue search "login timeout" --team <key>
 npx -y linear-sdk-axi issue search "retry queue" --comments
+npx -y linear-sdk-axi issue search "retry queue" --limit 25 --all --max-items 100
 npx -y linear-sdk-axi issue view <id>
 npx -y linear-sdk-axi issue view <id> --full
 npx -y linear-sdk-axi issue view <id> --comments
@@ -63,16 +68,19 @@ npx -y linear-sdk-axi issue update <id> --add-label "<name|id>" --remove-label "
 npx -y linear-sdk-axi issue update <id> --parent <id|none>
 npx -y linear-sdk-axi issue update <id> --cycle <cycle-id|none> --priority <0-4> --estimate <n|none> --due-date <YYYY-MM-DD|none>
 npx -y linear-sdk-axi issue relation list <id>
+npx -y linear-sdk-axi issue relation list <id> --all --max-items 100
 npx -y linear-sdk-axi issue relation add <id> --blocks <id> --dry-run
 npx -y linear-sdk-axi issue comment <id> --body "<text>"
 npx -y linear-sdk-axi issue comment <id> --body "<text>" --dry-run
 npx -y linear-sdk-axi issue comment list <id>
+npx -y linear-sdk-axi issue comment list <id> --all --max-items 100
 npx -y linear-sdk-axi issue comment <id> --reply-to <comment-id> --body "<text>"
 npx -y linear-sdk-axi issue close <id>
 npx -y linear-sdk-axi issue close <id> --dry-run
 npx -y linear-sdk-axi label list
 npx -y linear-sdk-axi label list --team <key>
 npx -y linear-sdk-axi project list
+npx -y linear-sdk-axi project list --all --max-items 100
 npx -y linear-sdk-axi project view <id>
 npx -y linear-sdk-axi project status list
 npx -y linear-sdk-axi project create --name "<outcome>" --team <key> --status "<id|name|type>" --target-date <YYYY-MM-DD> --dry-run

@@ -209,23 +209,25 @@ function wrapIssue(
         .filter((candidate) => candidate.parentId === issue.id)
         .map((child) => wrapIssue(child, issues, relations)),
     ),
-    comments: async () => ({
-      nodes: (issue.comments ?? []).map((c) => ({
+    comments: async (opts?: { first?: number; after?: string }) => pagedConnection(
+      (issue.comments ?? []).map((c) => ({
         ...c,
         user: Promise.resolve(c.user ?? null),
       })),
-      totalCount: issue.comments?.length ?? 0,
-    }),
+      opts,
+    ),
     labels: async () => connection(issue.labels ?? []),
-    relations: async () => connection(
+    relations: async (opts?: { first?: number; after?: string }) => pagedConnection(
       relations
         .filter((relation) => relation.issueId === issue.id)
         .map((relation) => wrapRelation(relation, issues, relations)),
+      opts,
     ),
-    inverseRelations: async () => connection(
+    inverseRelations: async (opts?: { first?: number; after?: string }) => pagedConnection(
       relations
         .filter((relation) => relation.relatedIssueId === issue.id)
         .map((relation) => wrapRelation(relation, issues, relations)),
+      opts,
     ),
   };
 }
@@ -253,10 +255,10 @@ function wrapProject(
   return {
     ...project,
     status: Promise.resolve(project.projectStatus ?? null),
-    issues: async () => ({
-      nodes: related.map((issue) => wrapIssue(issue, issues, relations)),
-      totalCount: related.length,
-    }),
+    issues: async (opts?: { first?: number; after?: string }) => pagedConnection(
+      related.map((issue) => wrapIssue(issue, issues, relations)),
+      opts,
+    ),
   };
 }
 
@@ -272,6 +274,25 @@ function connection<T>(nodes: T[], totalCount?: number) {
     nodes,
     totalCount: totalCount ?? nodes.length,
     pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
+function pagedConnection<T>(
+  nodes: T[],
+  opts?: { first?: number; after?: string },
+) {
+  const first = opts?.first ?? nodes.length;
+  const match = /^cursor:(\d+)$/.exec(opts?.after ?? "");
+  const offset = match ? Number(match[1]) : 0;
+  const page = nodes.slice(offset, offset + first);
+  const endOffset = offset + page.length;
+  return {
+    nodes: page,
+    totalCount: nodes.length,
+    pageInfo: {
+      hasNextPage: endOffset < nodes.length,
+      endCursor: page.length > 0 ? `cursor:${endOffset}` : null,
+    },
   };
 }
 
@@ -487,14 +508,16 @@ export function createMockLinear(options: MockOptions = {}): {
         return connection(assigned.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), assigned.length);
       },
     }),
-    issues: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
+    issues: async (opts?: { first?: number; after?: string; filter?: Record<string, unknown> }) => {
       let filtered = applyIssueFilter(issues, opts?.filter, relations);
-      const first = opts?.first ?? 30;
-      return connection(filtered.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), filtered.length);
+      return pagedConnection(
+        filtered.map((issue) => wrapIssue(issue, issues, relations)),
+        opts,
+      );
     },
     searchIssues: async (
       term: string,
-      opts?: { first?: number; teamId?: string; includeComments?: boolean },
+      opts?: { first?: number; after?: string; teamId?: string; includeComments?: boolean },
     ) => {
       const query = term.toLowerCase();
       let matched = issues.filter((issue) => {
@@ -509,8 +532,10 @@ export function createMockLinear(options: MockOptions = {}): {
         return content.includes(query);
       });
       if (opts?.teamId) matched = matched.filter((issue) => issue.team.id === opts.teamId);
-      const first = opts?.first ?? 20;
-      return connection(matched.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), matched.length);
+      return pagedConnection(
+        matched.map((issue) => wrapIssue(issue, issues, relations)),
+        opts,
+      );
     },
     issue: async (id: string) => {
       const found = issues.find((i) => i.id === id || i.identifier === id);
@@ -555,17 +580,16 @@ export function createMockLinear(options: MockOptions = {}): {
       }
       return wrapCycle(found);
     },
-    projects: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
-      const first = opts?.first ?? 30;
+    projects: async (opts?: { first?: number; after?: string; filter?: Record<string, unknown> }) => {
       const teamId = (
         opts?.filter as { accessibleTeams?: { id?: { eq?: string } } } | undefined
       )?.accessibleTeams?.id?.eq;
       const matching = teamId
         ? projects.filter((project) => project.teamIds?.includes(teamId))
         : projects;
-      return connection(
-        matching.slice(0, first).map((p) => wrapProject(p, issues, relations)),
-        matching.length,
+      return pagedConnection(
+        matching.map((p) => wrapProject(p, issues, relations)),
+        opts,
       );
     },
     project: async (id: string) => {

@@ -42,6 +42,8 @@ const TOPICS: Record<string, UsageTopic> = {
     entries: [
       { goal: "my open work", command: "linear-sdk-axi issue list" },
       { goal: "my unblocked work", command: "linear-sdk-axi issue list --unblocked" },
+      { goal: "bounded full list", command: "linear-sdk-axi issue list --all --max-items <n>" },
+      { goal: "next page", command: "linear-sdk-axi issue list --after <cursor>" },
       {
         goal: "full-text search",
         command: "linear-sdk-axi issue search \"...\" [--team <key>] [--comments]",
@@ -103,7 +105,7 @@ const TOPICS: Record<string, UsageTopic> = {
   project: {
     summary: "List, inspect, create, or safely update named outcomes",
     entries: [
-      { goal: "list", command: "linear-sdk-axi project list [--team <key>]" },
+      { goal: "list", command: "linear-sdk-axi project list [--team <key>] [--all --max-items <n>]" },
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
       { goal: "list project statuses", command: "linear-sdk-axi project status list" },
       {
