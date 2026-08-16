@@ -42,6 +42,7 @@ const TOPICS: Record<string, UsageTopic> = {
     entries: [
       { goal: "my open work", command: "linear-sdk-axi issue list" },
       { goal: "my unblocked work", command: "linear-sdk-axi issue list --unblocked" },
+      { goal: "project work", command: "linear-sdk-axi issue list --project <id|name>" },
       { goal: "bounded full list", command: "linear-sdk-axi issue list --all --max-items <n>" },
       { goal: "next page", command: "linear-sdk-axi issue list --after <cursor>" },
       {
@@ -107,6 +108,7 @@ const TOPICS: Record<string, UsageTopic> = {
     entries: [
       { goal: "list", command: "linear-sdk-axi project list [--team <key>] [--all --max-items <n>]" },
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
+      { goal: "issue summary", command: "linear-sdk-axi project view <id|name> --issues" },
       { goal: "list project statuses", command: "linear-sdk-axi project status list" },
       {
         goal: "create safely",

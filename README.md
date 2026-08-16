@@ -93,7 +93,7 @@ workspace access is in doubt.
 | --- | --- |
 | linear-sdk-axi | Live dashboard: me, assigned issues (~20), counts by workflow state type |
 | linear-sdk-axi usage [topic] | Two-tier command map: overview, then exact forms for a topic |
-| linear-sdk-axi issue list | Assigned uncompleted issues (unless --assignee/--state/--team); `--unblocked` excludes blocked work; cursor pagination |
+| linear-sdk-axi issue list | Assigned uncompleted issues (unless scoped); filter by `--project <id|name>`, assignee, state, or team; `--unblocked` excludes blocked work; cursor pagination |
 | linear-sdk-axi issue search <query> | Full-text issue search; optional team scope, comment text, and cursor pagination |
 | linear-sdk-axi issue view <id> | Issue detail and parent. Truncated description. `--full`, `--comments`, `--sub-issues` |
 | linear-sdk-axi issue create --title | Create. --team required unless only one team. Optional `--parent`; repeat `--label`. --dry-run |
@@ -106,7 +106,7 @@ workspace access is in doubt.
 | linear-sdk-axi label list | Discover workspace labels, or labels usable by `--team <key>` |
 | linear-sdk-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-sdk-axi project list | Projects: name, state, progress; cursor pagination |
-| linear-sdk-axi project view <id> | Project detail. Truncated description. --full |
+| linear-sdk-axi project view <id> | Project detail and state counts. `--issues` adds a paginated issue summary; `--full` shows the complete description |
 | linear-sdk-axi project status list | List action-ready project status IDs, names, and types |
 | linear-sdk-axi project create --name | Create a named outcome scoped to one team. Optional description, status, priority, start/target dates. --dry-run |
 | linear-sdk-axi project update <id> | Update name, description, status, priority, or dates. Date fields accept `none` to clear. Idempotent no-op. --dry-run |
