@@ -59,7 +59,7 @@ const TOPICS: Record<string, UsageTopic> = {
       },
       {
         goal: "create safely",
-        command: "linear-sdk-axi issue create --title \"...\" --team <key> [--parent <id>] --label <name|id> --dry-run",
+        command: "linear-sdk-axi issue create --title \"...\" --team <key> [--parent <id>] --label <name|id> [--dry-run|--verify]",
       },
       {
         goal: "change fields",
@@ -71,11 +71,11 @@ const TOPICS: Record<string, UsageTopic> = {
       },
       {
         goal: "add relation safely",
-        command: "linear-sdk-axi issue relation add <id> --blocks <id> --dry-run",
+        command: "linear-sdk-axi issue relation add <id> --blocks <id> [--dry-run|--verify]",
       },
       {
         goal: "remove relation safely",
-        command: "linear-sdk-axi issue relation remove <id> (--id <relation-id> | --blocks <id>) --dry-run",
+        command: "linear-sdk-axi issue relation remove <id> (--id <relation-id> | --blocks <id>) [--dry-run|--verify]",
       },
       {
         goal: "comment threads",
@@ -83,7 +83,7 @@ const TOPICS: Record<string, UsageTopic> = {
       },
       {
         goal: "reply in thread",
-        command: "linear-sdk-axi issue comment <id> --reply-to <comment-id> --body \"...\"",
+        command: "linear-sdk-axi issue comment <id> --reply-to <comment-id> --body \"...\" [--verify]",
       },
       { goal: "complete", command: "linear-sdk-axi issue close <id> [--dry-run|--verify]" },
     ],

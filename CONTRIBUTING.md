@@ -14,6 +14,7 @@ history.
 
    ```powershell
    npm ci
+   node bin/run-local.mjs --version
    npm test
    npm pack --dry-run
    ```
@@ -22,6 +23,11 @@ history.
 checks are intentionally opt-in (`LINEAR_SDK_AXI_LIVE_TEST=1`) and read-only.
 Run them only with a credential supplied through a secret store or temporary
 shell environment; never commit `.env` or print tokens.
+
+Use `node bin/run-local.mjs <args>` for repository-local dogfood. It rebuilds,
+preserves quoted arguments on Windows, and avoids
+`npm exec --package=linear-sdk-axi@<version>` being shadowed by the checkout's
+package identity.
 
 ## Day-to-day changes
 
