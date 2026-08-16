@@ -55,6 +55,22 @@ export type MockLabel = {
   isGroup?: boolean;
 };
 
+export type MockCycle = {
+  id: string;
+  name: string;
+  number?: number;
+  progress?: number;
+  startsAt?: string;
+  endsAt?: string;
+  description?: string;
+  isActive?: boolean;
+  isFuture?: boolean;
+  isPast?: boolean;
+  isNext?: boolean;
+  isPrevious?: boolean;
+  team: MockTeam;
+};
+
 export type MockIssue = {
   id: string;
   identifier: string;
@@ -76,6 +92,7 @@ export type MockOptions = {
   teams?: MockTeam[];
   projects?: MockProject[];
   labels?: MockLabel[];
+  cycles?: MockCycle[];
   users?: MockUser[];
 };
 
@@ -170,6 +187,13 @@ function wrapProject(project: MockProject, issues: MockIssue[]) {
   };
 }
 
+function wrapCycle(cycle: MockCycle) {
+  return {
+    ...cycle,
+    team: Promise.resolve(wrapTeam(cycle.team)),
+  };
+}
+
 function connection<T>(nodes: T[], totalCount?: number) {
   return {
     nodes,
@@ -208,6 +232,7 @@ export function createMockLinear(options: MockOptions = {}): {
   const issues = [...(options.issues ?? [])];
   const projects = options.projects ?? [];
   const labels = options.labels ?? [];
+  const cycles = options.cycles ?? [];
   const users = options.users ?? [viewer];
 
   const spies: MockSpies = {
@@ -345,7 +370,27 @@ export function createMockLinear(options: MockOptions = {}): {
         err.status = 404;
         throw err;
       }
-      return wrapTeam(found);
+      return {
+        ...wrapTeam(found),
+        cycles: async (opts?: { first?: number }) => {
+          const first = opts?.first ?? 20;
+          const matching = cycles.filter((cycle) => cycle.team.id === found.id);
+          return connection(matching.slice(0, first).map(wrapCycle), matching.length);
+        },
+      };
+    },
+    cycles: async (opts?: { first?: number }) => {
+      const first = opts?.first ?? 20;
+      return connection(cycles.slice(0, first).map(wrapCycle), cycles.length);
+    },
+    cycle: async (id: string) => {
+      const found = cycles.find((cycle) => cycle.id === id);
+      if (!found) {
+        const err = new Error(`Cycle not found: ${id}`) as Error & { status: number };
+        err.status = 404;
+        throw err;
+      }
+      return wrapCycle(found);
     },
     projects: async (opts?: { first?: number }) => {
       const first = opts?.first ?? 30;

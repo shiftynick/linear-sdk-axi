@@ -39,6 +39,8 @@ Or install globally. Prefer npx when the binary is not on PATH.
 | linear-axi issue close <id> | Move to a completed-type state. Idempotent if already completed. --dry-run |
 | linear-axi project list | Projects: name, state, progress |
 | linear-axi project view <id> | Project detail. Truncated description. --full |
+| linear-axi cycle list | Read-only cycles: id, name, state, progress. Optional `--team` |
+| linear-axi cycle view <id> | Cycle timing and description. `--full` for complete text |
 | linear-axi team list | Teams: key, name, issue count |
 | linear-axi me | Viewer id, name, email, assigned issue count |
 | linear-axi status | Workflow states for default or --team team (workflow alias) |
@@ -51,7 +53,7 @@ Global --team <key> comes AFTER the command. Flags are not allowed before the to
 Issue ids accept Linear identifiers (ENG-123) or UUIDs.
 
 Use `linear-axi usage` for the compact capability map, then `linear-axi usage issue`
-(or `project`, `team`, `account`, or `setup`) for exact command forms. This is the
+(or `project`, `cycle`, `team`, `account`, or `setup`) for exact command forms. This is the
 preferred discovery path; reserve `--help` for exhaustive flag detail.
 
 ## TOON output

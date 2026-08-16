@@ -1,6 +1,7 @@
 import { runAxiCli } from "axi-sdk-js";
 import { parseTeamArgs, type TeamContext } from "./client.js";
 import { doctorCommand, DOCTOR_HELP } from "./commands/doctor.js";
+import { cycleCommand, CYCLE_HELP } from "./commands/cycle.js";
 import { homeCommand } from "./commands/home.js";
 import { issueCommand, ISSUE_HELP } from "./commands/issue.js";
 import { meCommand, ME_HELP } from "./commands/me.js";
@@ -22,8 +23,8 @@ type MainOptions = {
 };
 
 export const TOP_HELP = `usage: linear-axi [command] [args] [flags]
-commands[10]:
-  (none)=dashboard, usage, issue, project, team, me, status, workflow, doctor, setup
+commands[11]:
+  (none)=dashboard, usage, issue, project, cycle, team, me, status, workflow, doctor, setup
 flags[3]:
   --team (after command) space or equals form, --help, -v/-V/--version
 examples:
@@ -34,6 +35,7 @@ examples:
   linear-axi issue list --team ENG
   linear-axi issue view ENG-123
   linear-axi issue create --title "Fix login" --team ENG
+  linear-axi cycle list --team ENG
   linear-axi me
   linear-axi status --team ENG
   linear-axi doctor
@@ -44,6 +46,7 @@ const COMMAND_HELP: Record<string, string> = {
   usage: USAGE_HELP,
   issue: ISSUE_HELP,
   project: PROJECT_HELP,
+  cycle: CYCLE_HELP,
   team: TEAM_HELP,
   me: ME_HELP,
   status: STATUS_HELP,
@@ -65,6 +68,7 @@ const COMMANDS: Record<string, CommandFn> = {
   usage: withTeamContext(usageCommand),
   issue: withTeamContext(issueCommand),
   project: withTeamContext(projectCommand),
+  cycle: withTeamContext(cycleCommand),
   team: withTeamContext(teamCommand),
   me: withTeamContext(meCommand),
   status: withTeamContext(statusCommand),
