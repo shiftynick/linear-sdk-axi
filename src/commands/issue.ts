@@ -45,7 +45,7 @@ import {
 } from "../toon.js";
 
 export const ISSUE_HELP = `usage: linear-axi issue <subcommand>
-subcommands[6]:
+subcommands[7]:
   list, search <query>, view <id>, create, update <id>, comment <id>, comment list <id>, close <id>
 flags{list}:
   --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --limit (default 30), --fields <a,b,c>

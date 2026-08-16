@@ -230,6 +230,83 @@ export async function listTeams(first = 50): Promise<AnyRec[]> {
   });
 }
 
+export type HydratedCycle = {
+  id: string;
+  number: number | null;
+  name: string;
+  description: string;
+  progress: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  state: string;
+  team: string | null;
+  teamKey: string | null;
+  raw: AnyRec;
+};
+
+export async function hydrateCycle(cycle: AnyRec): Promise<HydratedCycle> {
+  const team = await awaitRel(cycle.team);
+  const state = cycle.isActive
+    ? "active"
+    : cycle.isNext
+      ? "next"
+      : cycle.isPrevious
+        ? "previous"
+        : cycle.isFuture
+          ? "future"
+          : cycle.isPast
+            ? "past"
+            : "unknown";
+  return {
+    id: String(cycle.id ?? ""),
+    number: typeof cycle.number === "number" ? cycle.number : null,
+    name: typeof cycle.name === "string" ? cycle.name : "",
+    description: typeof cycle.description === "string" ? cycle.description : "",
+    progress: typeof cycle.progress === "number" ? cycle.progress : null,
+    startsAt: typeof cycle.startsAt === "string" ? cycle.startsAt : null,
+    endsAt: typeof cycle.endsAt === "string" ? cycle.endsAt : null,
+    state,
+    team: team?.name ? String(team.name) : team?.key ? String(team.key) : null,
+    teamKey: team?.key ? String(team.key) : null,
+    raw: cycle,
+  };
+}
+
+export async function listCycles(opts?: {
+  first?: number;
+  team?: AnyRec;
+}): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+  return withLinearErrors(async () => {
+    const first = opts?.first ?? 20;
+    const scopedTeam =
+      opts?.team && typeof opts.team.cycles !== "function" && opts.team.id
+        ? await getLinearClient().team(String(opts.team.id))
+        : opts?.team;
+    const conn =
+      scopedTeam && typeof scopedTeam.cycles === "function"
+        ? await scopedTeam.cycles({ first })
+        : await getLinearClient().cycles({ first });
+    const nodes = nodesOf(conn);
+    return {
+      nodes,
+      totalCount: totalOf(conn, nodes.length),
+      hasNextPage: Boolean(conn?.pageInfo?.hasNextPage),
+    };
+  });
+}
+
+export async function getCycle(id: string): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const cycle = await getLinearClient().cycle(id);
+    if (!cycle?.id) {
+      throw new AxiError(`Cycle ${id} not found`, "NOT_FOUND", [
+        "Run `linear-axi cycle list` to see available cycles",
+      ]);
+    }
+    return cycle;
+  });
+}
+
 export async function listIssueLabels(first = 250): Promise<AnyRec[]> {
   return withLinearErrors(async () => {
     const client = getLinearClient();

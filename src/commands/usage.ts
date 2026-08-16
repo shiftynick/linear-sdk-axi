@@ -11,7 +11,7 @@ import {
 export const USAGE_HELP = `usage: linear-axi usage [topic]
 Show a compact two-tier map of invocable commands, without loading full help.
 
-topics: issue, project, team, account, setup
+topics: issue, project, cycle, team, account, setup
 examples:
   linear-axi usage
   linear-axi usage issue
@@ -80,6 +80,14 @@ const TOPICS: Record<string, UsageTopic> = {
       { goal: "inspect", command: "linear-axi project view <id|name> [--full]" },
     ],
     next: ["Project details include issue counts by workflow state"],
+  },
+  cycle: {
+    summary: "Read cycle progress, timing, and descriptions",
+    entries: [
+      { goal: "list", command: "linear-axi cycle list [--team <key>]" },
+      { goal: "inspect", command: "linear-axi cycle view <id> [--full]" },
+    ],
+    next: ["Cycles are read-only; list output includes the id needed for view"],
   },
   team: {
     summary: "Discover teams and their workflow states",
