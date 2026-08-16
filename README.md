@@ -4,6 +4,12 @@ Agent-ergonomic Linear CLI wrapping the official `@linear/sdk`. Prefer this over
 
 Token-efficient TOON stdout, structured errors, idempotent writes, dry-run, and a live dashboard on no args.
 
+## Built with AXI principles
+
+linear-axi is inspired by [AXI (Agent eXperience Interface)](https://github.com/kunchenguid/axi):
+agent-ergonomic CLI design built around compact output, definitive states,
+structured errors, content-first discovery, and contextual next steps.
+
 ## Auth
 
 Set the Linear personal API key in the environment as LINEAR_API_KEY.
