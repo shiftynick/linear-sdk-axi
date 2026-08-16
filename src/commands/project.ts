@@ -1,21 +1,27 @@
+import { encode } from "@toon-format/toon";
 import { AxiError } from "../errors.js";
 import {
   assertNoUnknownFlags,
   getFlag,
   getPositional,
   hasFlag,
+  optionalFlagArg,
   parseLimit,
   requirePositional,
+  takeBoolFlag,
 } from "../args.js";
-import { truncateBody, wasTruncated } from "../body.js";
+import { takeBody, truncateBody, wasTruncated } from "../body.js";
 import type { TeamContext } from "../client.js";
 import { teamFlagSuffix } from "../client.js";
 import { formatCountLine } from "../format.js";
 import {
+  createProject,
   getProject,
   listProjects,
   projectIssueCounts,
+  resolveTeam,
   resolveTeamFromContext,
+  updateProject,
 } from "../linear.js";
 import {
   custom,
@@ -27,17 +33,21 @@ import {
   type FieldDef,
 } from "../toon.js";
 
-export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view> [id]
-List or view Linear projects.
+export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|create|update> [id]
+List, view, create, or update Linear projects.
 
-subcommands: list, view <id|name>
+subcommands: list, view <id|name>, create, update <id|name>
 flags{list}: --team <key>, --limit (default 30), --help
 flags{view}: --full, --help
+flags{create}: --name (required), --team (required unless only one team), --description/--body, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
+flags{update}: --name, --description/--body, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
 examples:
   linear-sdk-axi project list
   linear-sdk-axi project list --team ENG
   linear-sdk-axi project view "Launch"
   linear-sdk-axi project view <id> --full
+  linear-sdk-axi project create --name "Launch" --team ENG --dry-run
+  linear-sdk-axi project update "Launch" --target-date 2026-10-01 --dry-run
 `;
 
 const listSchema: FieldDef[] = [
@@ -63,6 +73,11 @@ export async function projectCommand(
   switch (sub) {
     case "view":
       return viewProjectCommand(args, ctx);
+    case "create":
+      return createProjectCommand(args, ctx);
+    case "update":
+    case "edit":
+      return updateProjectCommand(args, ctx);
     default:
       throw new AxiError(
         `Unknown project subcommand: ${sub}`,
@@ -119,6 +134,9 @@ async function viewProjectCommand(
     name: project.name ?? null,
     state: project.state ?? project.status ?? null,
     progress: formatProgress(project.progress),
+    priority: typeof project.priority === "number" ? project.priority : null,
+    startDate: project.startDate ?? null,
+    targetDate: project.targetDate ?? null,
     url: project.url ?? null,
     description: full ? description : truncateBody(description, 500),
     issueCounts: counts,
@@ -128,6 +146,9 @@ async function viewProjectCommand(
     field("name"),
     field("state"),
     field("progress"),
+    field("priority"),
+    field("startDate"),
+    field("targetDate"),
     field("url"),
     field("description"),
     custom("issueCounts", (it) => it.issueCounts),
@@ -145,4 +166,211 @@ async function viewProjectCommand(
     renderDetail("project", item, schema),
     renderHelp(help),
   ]);
+}
+
+function parsePriority(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/.test(value)) {
+    throw new AxiError("--priority must be an integer from 0 to 4", "VALIDATION_ERROR");
+  }
+  const priority = Number(value);
+  if (priority < 0 || priority > 4) {
+    throw new AxiError("--priority must be an integer from 0 to 4", "VALIDATION_ERROR");
+  }
+  return priority;
+}
+
+function parseDate(
+  value: string | undefined,
+  flag: "--start-date" | "--target-date",
+  allowNone: boolean,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (allowNone && value.toLowerCase() === "none") return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AxiError(`${flag} must use YYYY-MM-DD`, "VALIDATION_ERROR");
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new AxiError(`${flag} must be a valid calendar date`, "VALIDATION_ERROR");
+  }
+  return value;
+}
+
+function plannedOrWrite(
+  dryRun: boolean,
+  mutation: string,
+  input: Record<string, unknown>,
+  write: () => Promise<string>,
+): Promise<string> {
+  if (!dryRun) return write();
+  return Promise.resolve(
+    renderOutput([
+      encode({ dryRun: true, mutation, input }),
+      renderHelp(["Re-run without --dry-run to apply"]),
+    ]),
+  );
+}
+
+function projectDetail(
+  project: Record<string, unknown>,
+  action: "created" | "updated",
+): string {
+  return renderOutput([
+    renderDetail(
+      "project",
+      {
+        id: project.id ?? null,
+        name: project.name ?? null,
+        state: project.state ?? project.status ?? null,
+        priority: typeof project.priority === "number" ? project.priority : null,
+        startDate: project.startDate ?? null,
+        targetDate: project.targetDate ?? null,
+        url: project.url ?? null,
+        action,
+      },
+      [
+        field("id"),
+        field("name"),
+        field("state"),
+        field("priority"),
+        field("startDate"),
+        field("targetDate"),
+        field("url"),
+        field("action"),
+      ],
+    ),
+    renderHelp([
+      `Run \`linear-sdk-axi project view ${String(project.id ?? "<id>")}\` for details`,
+    ]),
+  ]);
+}
+
+async function createProjectCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  assertNoUnknownFlags(
+    args,
+    [
+      "--name",
+      "--team",
+      "--description",
+      "--body",
+      "--body-file",
+      "--priority",
+      "--start-date",
+      "--target-date",
+      "--dry-run",
+    ],
+    "project create",
+  );
+  const name = optionalFlagArg(args, "--name");
+  if (!name) {
+    throw new AxiError("--name is required", "VALIDATION_ERROR", [
+      'Run `linear-sdk-axi project create --name "..." --team <key>`',
+    ]);
+  }
+  const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
+  const description = takeBody(args, {
+    required: false,
+    inlineFlags: ["--body", "--description"],
+  });
+  const priority = parsePriority(optionalFlagArg(args, "--priority"));
+  const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", false);
+  const targetDate = parseDate(optionalFlagArg(args, "--target-date"), "--target-date", false);
+  const team = await resolveTeam(ctx?.teamKey);
+  const input: Record<string, unknown> = {
+    name,
+    teamIds: [String(team.id)],
+  };
+  if (description !== undefined) input.description = description;
+  if (priority !== undefined) input.priority = priority;
+  if (startDate !== undefined) input.startDate = startDate;
+  if (targetDate !== undefined) input.targetDate = targetDate;
+
+  return plannedOrWrite(dryRun, "createProject", input, async () => {
+    const created = await createProject(input);
+    return projectDetail(created, "created");
+  });
+}
+
+async function updateProjectCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  assertNoUnknownFlags(
+    args,
+    [
+      "--name",
+      "--description",
+      "--body",
+      "--body-file",
+      "--priority",
+      "--start-date",
+      "--target-date",
+      "--dry-run",
+      "--team",
+    ],
+    "project update",
+  );
+  const id = requirePositional(args, 1, "project id or name");
+  const dryRun = takeBoolFlag(args, "--dry-run") || hasFlag(args, "--dry-run");
+  const name = optionalFlagArg(args, "--name");
+  const description = takeBody(args, {
+    required: false,
+    inlineFlags: ["--body", "--description"],
+  });
+  const priority = parsePriority(optionalFlagArg(args, "--priority"));
+  const startDate = parseDate(optionalFlagArg(args, "--start-date"), "--start-date", true);
+  const targetDate = parseDate(optionalFlagArg(args, "--target-date"), "--target-date", true);
+  if (
+    name === undefined &&
+    description === undefined &&
+    priority === undefined &&
+    startDate === undefined &&
+    targetDate === undefined
+  ) {
+    throw new AxiError("project update requires at least one editable flag", "VALIDATION_ERROR");
+  }
+
+  const project = await getProject(id);
+  const input: Record<string, unknown> = {};
+  const planned: Record<string, unknown> = {};
+  if (name !== undefined) {
+    planned.name = name;
+    if (name !== project.name) input.name = name;
+  }
+  if (description !== undefined) {
+    planned.description = description;
+    if (description !== project.description) input.description = description;
+  }
+  if (priority !== undefined) {
+    planned.priority = priority;
+    if (priority !== project.priority) input.priority = priority;
+  }
+  if (startDate !== undefined) {
+    planned.startDate = startDate;
+    if (startDate !== (project.startDate ?? null)) input.startDate = startDate;
+  }
+  if (targetDate !== undefined) {
+    planned.targetDate = targetDate;
+    if (targetDate !== (project.targetDate ?? null)) input.targetDate = targetDate;
+  }
+
+  if (Object.keys(input).length === 0) {
+    if (dryRun) return plannedOrWrite(true, "updateProject", { id: project.id, ...planned }, async () => "");
+    return renderOutput([
+      renderDetail(
+        "project",
+        { id: project.id ?? null, name: project.name ?? null, message: "already in desired state (no-op)" },
+        [field("id"), field("name"), field("message")],
+      ),
+      renderHelp([`Run \`linear-sdk-axi project view ${String(project.id ?? id)}\` for details`]),
+    ]);
+  }
+  return plannedOrWrite(dryRun, "updateProject", { id: project.id, ...input }, async () => {
+    const updated = await updateProject(String(project.id), input);
+    return projectDetail(updated, "updated");
+  });
 }
