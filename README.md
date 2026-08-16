@@ -119,7 +119,7 @@ workspace access is in doubt.
 | linear-sdk-axi auth status/login/finish/logout | Inspect auth, complete PKCE OAuth, or remove saved OAuth credentials |
 | linear-sdk-axi setup hooks | Install SessionStart hooks (Claude Code, Codex, OpenCode) |
 | linear-sdk-axi --help | Top-level command index |
-| linear-sdk-axi -v / -V / --version | Print 0.1.0 (fast path, no API key) |
+| linear-sdk-axi -v / -V / --version | Print the installed version (fast path, no API key) |
 
 Global --team <key> comes AFTER the command. Flags are not allowed before the top-level command.
 Issue ids accept Linear identifiers (ENG-123) or UUIDs.

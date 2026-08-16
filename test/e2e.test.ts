@@ -1,10 +1,14 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const binary = fileURLToPath(new URL("../dist/bin/linear-sdk-axi.js", import.meta.url));
+const packageVersion = JSON.parse(
+  readFileSync(join(root, "package.json"), "utf8"),
+).version as string;
 
 function runBinary(args: string[]) {
   const {
@@ -26,7 +30,7 @@ describe("compiled CLI", () => {
   it("prints its version without a Linear API key", () => {
     const result = runBinary(["--version"]);
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("0.1.0");
+    expect(result.stdout.trim()).toBe(packageVersion);
     expect(result.stderr).toBe("");
   });
 

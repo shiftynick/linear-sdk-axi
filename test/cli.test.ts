@@ -76,7 +76,7 @@ describe("version fast path", () => {
       try {
         const { out, exit } = await run([flag]);
         expect(out.trim()).toBe(VERSION);
-        expect(out).toContain("0.1.0");
+        expect(out).toContain(VERSION);
         expect(exit).toBe(0);
       } finally {
         if (saved !== undefined) process.env.LINEAR_API_KEY = saved;
