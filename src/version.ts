@@ -1,2 +1,2 @@
-// Leaf module: node builtins only (or nothing). Imported on the --version fast path.
-export const VERSION = "0.1.0";
+// Keep this synchronized with package.json. The compiled CLI test enforces it.
+export const VERSION = "0.1.2";
