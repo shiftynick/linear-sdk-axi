@@ -48,6 +48,10 @@ npx -y linear-axi issue close <id>
 npx -y linear-axi issue close <id> --dry-run
 npx -y linear-axi project list
 npx -y linear-axi project view <id>
+npx -y linear-axi cycle list
+npx -y linear-axi cycle list --team <key>
+npx -y linear-axi cycle view <id>
+npx -y linear-axi cycle view <id> --full
 npx -y linear-axi team list
 npx -y linear-axi me
 npx -y linear-axi status
@@ -58,7 +62,8 @@ npx -y linear-axi --help
 npx -y linear-axi -v
 ```
 
-<id> is a Linear identifier (ENG-123) or UUID. Do not guess IDs.
+Issue <id> values are Linear identifiers (ENG-123) or UUIDs. Cycle commands
+take the cycle id shown by `cycle list`. Do not guess IDs.
 
 ## Writes
 
