@@ -85,7 +85,10 @@ const EXTRA_FIELDS: Record<string, FieldDef> = {
 };
 
 function parseFields(raw: string | undefined): FieldDef[] {
-  if (!raw) return [];
+  if (raw === undefined) return [];
+  if (raw.trim() === "") {
+    throw new AxiError("--fields requires at least one field", "VALIDATION_ERROR");
+  }
   const requested = [
     ...new Set(
       raw

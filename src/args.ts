@@ -10,7 +10,7 @@ export function getFlag(args: string[], name: string): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === name) {
-      if (i + 1 >= args.length) return undefined;
+      if (i + 1 >= args.length) return "";
       return args[i + 1];
     }
     if (arg.startsWith(equalsPrefix)) {

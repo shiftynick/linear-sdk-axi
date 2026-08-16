@@ -75,6 +75,21 @@ describe("issue list", () => {
     expect(out).toMatch(/0 assigned uncompleted issues|0 matching issues|0 issues/);
     expect(out).not.toMatch(/issues\[0\]/);
   });
+
+  it("rejects empty --limit, --fields, and --team values before calling Linear", async () => {
+    const { client } = createMockLinear();
+    setLinearClientForTests(client);
+
+    for (const argv of [
+      ["issue", "list", "--limit"],
+      ["issue", "list", "--fields="],
+      ["issue", "list", "--team"],
+    ]) {
+      const { out, exit } = await run(argv);
+      expect(exit).toBe(2);
+      expect(out).toContain("VALIDATION_ERROR");
+    }
+  });
 });
 
 describe("issue view", () => {
@@ -209,6 +224,29 @@ describe("issue comment", () => {
     expect(out).toContain("dryRun");
     expect(out).toContain("Looks good");
   });
+
+  it("does not treat a following flag as a comment body", async () => {
+    const { client, spies } = createMockLinear({
+      issues: [
+        makeIssue({
+          id: "i1",
+          identifier: "ENG-7",
+          title: "Comment target",
+        }),
+      ],
+    });
+    setLinearClientForTests(client);
+    const { out, exit } = await run([
+      "issue",
+      "comment",
+      "ENG-7",
+      "--body",
+      "--dry-run",
+    ]);
+    expect(exit).toBe(2);
+    expect(out).toContain("--body requires text");
+    expect(spies.createComment.calls).toHaveLength(0);
+  });
 });
 
 describe("issue create write path (mocked)", () => {
@@ -227,6 +265,42 @@ describe("issue create write path (mocked)", () => {
     expect(spies.createIssue.calls.length).toBe(1);
     expect(out).toContain("Real create");
     expect(out).toContain("ENG-");
+  });
+});
+
+describe("issue write paths (mocked)", () => {
+  it("updates a changed title and reports the updated issue", async () => {
+    const { client, spies, issues } = createMockLinear({
+      issues: [
+        makeIssue({ id: "i1", identifier: "ENG-50", title: "Before" }),
+      ],
+    });
+    setLinearClientForTests(client);
+    const { out, exit } = await run([
+      "issue",
+      "update",
+      "ENG-50",
+      "--title",
+      "After",
+    ]);
+    expect(exit).toBe(0);
+    expect(spies.updateIssue.calls).toHaveLength(1);
+    expect(issues[0].title).toBe("After");
+    expect(out).toContain("After");
+  });
+
+  it("closes an incomplete issue through the completed workflow state", async () => {
+    const { client, spies, issues } = createMockLinear({
+      issues: [
+        makeIssue({ id: "i1", identifier: "ENG-51", title: "Still open" }),
+      ],
+    });
+    setLinearClientForTests(client);
+    const { out, exit } = await run(["issue", "close", "ENG-51"]);
+    expect(exit).toBe(0);
+    expect(spies.updateIssue.calls).toHaveLength(1);
+    expect(issues[0].state.type).toBe("completed");
+    expect(out).toContain("completed");
   });
 });
 

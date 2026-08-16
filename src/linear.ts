@@ -104,6 +104,12 @@ export async function getViewer(): Promise<AnyRec> {
   });
 }
 
+export async function getViewerOrganization(
+  viewer: AnyRec,
+): Promise<AnyRec | undefined> {
+  return withLinearErrors(async () => awaitRel(viewer.organization));
+}
+
 export async function getAssignedIssues(opts?: {
   first?: number;
   filter?: AnyRec;

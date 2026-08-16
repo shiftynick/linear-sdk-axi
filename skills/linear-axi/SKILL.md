@@ -45,6 +45,7 @@ npx -y linear-axi team list
 npx -y linear-axi me
 npx -y linear-axi status
 npx -y linear-axi status --team <key>
+npx -y linear-axi doctor
 npx -y linear-axi setup hooks
 npx -y linear-axi --help
 npx -y linear-axi -v

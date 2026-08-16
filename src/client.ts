@@ -53,7 +53,7 @@ export function parseTeamArgs(args: string[]): {
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--team" && index + 1 < args.length) {
+    if (arg === "--team") {
       const value = args[index + 1];
       if (value === undefined || value.trim() === "" || value.startsWith("-")) {
         throw new AxiError("--team requires a value", "VALIDATION_ERROR");
@@ -62,7 +62,7 @@ export function parseTeamArgs(args: string[]): {
       index++;
       continue;
     }
-    if (arg.startsWith("--team=") && arg.length > "--team=".length) {
+    if (arg.startsWith("--team=")) {
       const value = arg.slice("--team=".length);
       if (value.trim() === "") {
         throw new AxiError("--team requires a value", "VALIDATION_ERROR");
