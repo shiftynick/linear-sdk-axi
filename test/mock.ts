@@ -55,6 +55,13 @@ export type MockLabel = {
   isGroup?: boolean;
 };
 
+export type MockRelation = {
+  id: string;
+  issueId: string;
+  relatedIssueId: string;
+  type: string;
+};
+
 export type MockCycle = {
   id: string;
   name: string;
@@ -82,7 +89,9 @@ export type MockIssue = {
   team: MockTeam;
   assignee?: MockUser | null;
   project?: MockProject | null;
+  parentId?: string;
   labels?: MockLabel[];
+  relations?: MockRelation[];
   comments?: MockComment[];
 };
 
@@ -152,7 +161,14 @@ function wrapTeam(team: MockTeam) {
   };
 }
 
-function wrapIssue(issue: MockIssue) {
+function wrapIssue(
+  issue: MockIssue,
+  issues: MockIssue[] = [],
+  relations: MockRelation[] = [],
+) {
+  const parent = issue.parentId
+    ? issues.find((candidate) => candidate.id === issue.parentId) ?? null
+    : null;
   return {
     id: issue.id,
     identifier: issue.identifier,
@@ -161,10 +177,17 @@ function wrapIssue(issue: MockIssue) {
     url: issue.url,
     commentCount: issue.commentCount ?? issue.comments?.length ?? 0,
     labelIds: issue.labels?.map((label) => label.id) ?? [],
+    parentId: issue.parentId,
     state: Promise.resolve(issue.state),
     team: Promise.resolve(wrapTeam(issue.team)),
     assignee: Promise.resolve(issue.assignee ?? null),
     project: Promise.resolve(issue.project ?? null),
+    parent: Promise.resolve(parent ? wrapIssue(parent, issues, relations) : null),
+    children: async () => connection(
+      issues
+        .filter((candidate) => candidate.parentId === issue.id)
+        .map((child) => wrapIssue(child, issues, relations)),
+    ),
     comments: async () => ({
       nodes: (issue.comments ?? []).map((c) => ({
         ...c,
@@ -173,15 +196,43 @@ function wrapIssue(issue: MockIssue) {
       totalCount: issue.comments?.length ?? 0,
     }),
     labels: async () => connection(issue.labels ?? []),
+    relations: async () => connection(
+      relations
+        .filter((relation) => relation.issueId === issue.id)
+        .map((relation) => wrapRelation(relation, issues, relations)),
+    ),
+    inverseRelations: async () => connection(
+      relations
+        .filter((relation) => relation.relatedIssueId === issue.id)
+        .map((relation) => wrapRelation(relation, issues, relations)),
+    ),
   };
 }
 
-function wrapProject(project: MockProject, issues: MockIssue[]) {
+function wrapRelation(
+  relation: MockRelation,
+  issues: MockIssue[],
+  relations: MockRelation[],
+) {
+  const source = issues.find((issue) => issue.id === relation.issueId);
+  const related = issues.find((issue) => issue.id === relation.relatedIssueId);
+  return {
+    ...relation,
+    issue: Promise.resolve(source ? wrapIssue(source, issues, relations) : null),
+    relatedIssue: Promise.resolve(related ? wrapIssue(related, issues, relations) : null),
+  };
+}
+
+function wrapProject(
+  project: MockProject,
+  issues: MockIssue[],
+  relations: MockRelation[] = [],
+) {
   const related = issues.filter((i) => i.project?.id === project.id);
   return {
     ...project,
     issues: async () => ({
-      nodes: related.map(wrapIssue),
+      nodes: related.map((issue) => wrapIssue(issue, issues, relations)),
       totalCount: related.length,
     }),
   };
@@ -205,6 +256,7 @@ function connection<T>(nodes: T[], totalCount?: number) {
 export type MockSpies = {
   createIssue: ReturnType<typeof createSpy>;
   updateIssue: ReturnType<typeof createSpy>;
+  createIssueRelation: ReturnType<typeof createSpy>;
   createComment: ReturnType<typeof createSpy>;
 };
 
@@ -226,18 +278,21 @@ export function createMockLinear(options: MockOptions = {}): {
   client: LinearLike;
   spies: MockSpies;
   issues: MockIssue[];
+  relations: MockRelation[];
 } {
   const viewer = options.viewer ?? defaultViewer;
   const teams = options.teams ?? [defaultTeam];
   const issues = [...(options.issues ?? [])];
   const projects = options.projects ?? [];
   const labels = options.labels ?? [];
+  const relations = [...(options.relations ?? [])];
   const cycles = options.cycles ?? [];
   const users = options.users ?? [viewer];
 
   const spies: MockSpies = {
     createIssue: createSpy(),
     updateIssue: createSpy(),
+    createIssueRelation: createSpy(),
     createComment: createSpy(),
   };
 
@@ -262,9 +317,10 @@ export function createMockLinear(options: MockOptions = {}): {
       team,
       assignee,
       labels: issueLabels,
+      parentId: typeof rec.parentId === "string" ? rec.parentId : undefined,
     });
     issues.push(created);
-    return { success: true, issue: wrapIssue(created) };
+    return { success: true, issue: wrapIssue(created, issues, relations) };
   });
 
   spies.updateIssue.mockImplementation(async (id: unknown, input: unknown) => {
@@ -279,6 +335,9 @@ export function createMockLinear(options: MockOptions = {}): {
     }
     if (typeof rec.assigneeId === "string") {
       found.assignee = users.find((u) => u.id === rec.assigneeId) ?? found.assignee;
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, "parentId")) {
+      found.parentId = typeof rec.parentId === "string" ? rec.parentId : undefined;
     }
     if (Array.isArray(rec.labelIds)) {
       found.labels = labels.filter((label) => rec.labelIds.includes(label.id));
@@ -295,7 +354,27 @@ export function createMockLinear(options: MockOptions = {}): {
         (label) => !rec.removedLabelIds.includes(label.id),
       );
     }
-    return { success: true, issue: wrapIssue(found) };
+    return { success: true, issue: wrapIssue(found, issues, relations) };
+  });
+
+  spies.createIssueRelation.mockImplementation(async (input: unknown) => {
+    const rec = input as Record<string, unknown>;
+    const issueId = String(rec.issueId ?? "");
+    const relatedIssueId = String(rec.relatedIssueId ?? "");
+    if (!issues.some((issue) => issue.id === issueId) || !issues.some((issue) => issue.id === relatedIssueId)) {
+      return { success: false };
+    }
+    const relation: MockRelation = {
+      id: `relation-${relations.length + 1}`,
+      issueId,
+      relatedIssueId,
+      type: String(rec.type ?? "related"),
+    };
+    relations.push(relation);
+    return {
+      success: true,
+      issueRelation: wrapRelation(relation, issues, relations),
+    };
   });
 
   spies.createComment.mockImplementation(async (input: unknown) => {
@@ -319,15 +398,15 @@ export function createMockLinear(options: MockOptions = {}): {
       ...viewer,
       assignedIssues: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
         let assigned = issues.filter((i) => i.assignee?.id === viewer.id);
-        assigned = applyIssueFilter(assigned, opts?.filter);
+        assigned = applyIssueFilter(assigned, opts?.filter, relations);
         const first = opts?.first ?? 30;
-        return connection(assigned.slice(0, first).map(wrapIssue), assigned.length);
+        return connection(assigned.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), assigned.length);
       },
     }),
     issues: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
-      let filtered = applyIssueFilter(issues, opts?.filter);
+      let filtered = applyIssueFilter(issues, opts?.filter, relations);
       const first = opts?.first ?? 30;
-      return connection(filtered.slice(0, first).map(wrapIssue), filtered.length);
+      return connection(filtered.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), filtered.length);
     },
     searchIssues: async (
       term: string,
@@ -347,7 +426,7 @@ export function createMockLinear(options: MockOptions = {}): {
       });
       if (opts?.teamId) matched = matched.filter((issue) => issue.team.id === opts.teamId);
       const first = opts?.first ?? 20;
-      return connection(matched.slice(0, first).map(wrapIssue), matched.length);
+      return connection(matched.slice(0, first).map((issue) => wrapIssue(issue, issues, relations)), matched.length);
     },
     issue: async (id: string) => {
       const found = issues.find((i) => i.id === id || i.identifier === id);
@@ -356,7 +435,7 @@ export function createMockLinear(options: MockOptions = {}): {
         err.status = 404;
         throw err;
       }
-      return wrapIssue(found);
+      return wrapIssue(found, issues, relations);
     },
     teams: async () => connection(teams.map(wrapTeam)),
     issueLabels: async (opts?: { first?: number }) => {
@@ -395,7 +474,7 @@ export function createMockLinear(options: MockOptions = {}): {
     projects: async (opts?: { first?: number }) => {
       const first = opts?.first ?? 30;
       return connection(
-        projects.slice(0, first).map((p) => wrapProject(p, issues)),
+        projects.slice(0, first).map((p) => wrapProject(p, issues, relations)),
         projects.length,
       );
     },
@@ -406,10 +485,11 @@ export function createMockLinear(options: MockOptions = {}): {
         err.status = 404;
         throw err;
       }
-      return wrapProject(found, issues);
+      return wrapProject(found, issues, relations);
     },
     createIssue: spies.createIssue as LinearLike["createIssue"],
     updateIssue: spies.updateIssue as LinearLike["updateIssue"],
+    createIssueRelation: spies.createIssueRelation as LinearLike["createIssueRelation"],
     createComment: spies.createComment as LinearLike["createComment"],
     users: async (opts?: { first?: number; filter?: Record<string, unknown> }) => {
       let filtered = users;
@@ -434,12 +514,13 @@ export function createMockLinear(options: MockOptions = {}): {
     user: async (id: string) => users.find((u) => u.id === id) ?? null,
   };
 
-  return { client, spies, issues };
+  return { client, spies, issues, relations };
 }
 
 function applyIssueFilter(
   issues: MockIssue[],
   filter?: Record<string, unknown>,
+  relations: MockRelation[] = [],
 ): MockIssue[] {
   if (!filter) return issues;
   return issues.filter((issue) => {
@@ -460,6 +541,21 @@ function applyIssueFilter(
       issue.state.name.toLowerCase() !== state.name.eqIgnoreCase.toLowerCase()
     ) {
       return false;
+    }
+    const hasBlockedByRelations = filter.hasBlockedByRelations as
+      | { eq?: boolean; neq?: boolean }
+      | undefined;
+    if (hasBlockedByRelations) {
+      const isBlocked = relations.some(
+        (relation) =>
+          relation.type === "blocks" && relation.relatedIssueId === issue.id,
+      );
+      if (hasBlockedByRelations.eq !== undefined && isBlocked !== hasBlockedByRelations.eq) {
+        return false;
+      }
+      if (hasBlockedByRelations.neq !== undefined && isBlocked === hasBlockedByRelations.neq) {
+        return false;
+      }
     }
     return true;
   });

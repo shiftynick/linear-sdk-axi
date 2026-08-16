@@ -91,6 +91,31 @@ describe("issue list", () => {
       expect(out).toContain("VALIDATION_ERROR");
     }
   });
+
+  it("filters the default assigned, open list to unblocked issues", async () => {
+    const blocker = makeIssue({
+      id: "i1",
+      identifier: "ENG-20",
+      title: "Resolve API contract",
+    });
+    const blocked = makeIssue({
+      id: "i2",
+      identifier: "ENG-21",
+      title: "Ship dependent client",
+    });
+    const { client } = createMockLinear({
+      issues: [blocker, blocked],
+      relations: [
+        { id: "r1", issueId: blocker.id, relatedIssueId: blocked.id, type: "blocks" },
+      ],
+    });
+    setLinearClientForTests(client);
+
+    const { out, exit } = await run(["issue", "list", "--unblocked"]);
+    expect(exit).toBe(0);
+    expect(out).toContain("ENG-20");
+    expect(out).not.toContain("ENG-21");
+  });
 });
 
 describe("issue search", () => {
@@ -321,6 +346,134 @@ describe("issue update", () => {
     expect(exit).toBe(0);
     expect(out).toMatch(/no-op|desired state/i);
     expect(spies.updateIssue.calls.length).toBe(0);
+  });
+});
+
+describe("issue hierarchy", () => {
+  it("shows a parent, lists sub-issues on demand, and plans parent assignment", async () => {
+    const parent = makeIssue({
+      id: "parent-1",
+      identifier: "ENG-60",
+      title: "Parent work item",
+    });
+    const child = makeIssue({
+      id: "child-1",
+      identifier: "ENG-61",
+      title: "Implementation slice",
+      parentId: parent.id,
+    });
+    const { client, spies } = createMockLinear({ issues: [parent, child] });
+    setLinearClientForTests(client);
+
+    const childView = await run(["issue", "view", "ENG-61"]);
+    expect(childView.exit).toBe(0);
+    expect(childView.out).toContain("ENG-60 Parent work item");
+
+    const parentView = await run(["issue", "view", "ENG-60", "--sub-issues"]);
+    expect(parentView.exit).toBe(0);
+    expect(parentView.out).toContain("subIssues");
+    expect(parentView.out).toContain("ENG-61");
+
+    const planned = await run([
+      "issue",
+      "create",
+      "--title",
+      "Another slice",
+      "--team",
+      "ENG",
+      "--parent",
+      "ENG-60",
+      "--dry-run",
+    ]);
+    expect(planned.exit).toBe(0);
+    expect(planned.out).toContain("parentId: parent-1");
+    expect(spies.createIssue.calls).toHaveLength(0);
+  });
+
+  it("can detach a sub-issue idempotently with --parent none", async () => {
+    const parent = makeIssue({
+      id: "parent-1",
+      identifier: "ENG-60",
+      title: "Parent work item",
+    });
+    const child = makeIssue({
+      id: "child-1",
+      identifier: "ENG-61",
+      title: "Implementation slice",
+      parentId: parent.id,
+    });
+    const { client, spies, issues } = createMockLinear({ issues: [parent, child] });
+    setLinearClientForTests(client);
+
+    const { exit } = await run(["issue", "update", "ENG-61", "--parent", "none"]);
+    expect(exit).toBe(0);
+    expect(spies.updateIssue.calls[0][1]).toMatchObject({ parentId: null });
+    expect(issues.find((issue) => issue.id === child.id)?.parentId).toBeUndefined();
+  });
+});
+
+describe("issue relations", () => {
+  it("plans, creates, lists, and idempotently preserves a blocks relation", async () => {
+    const source = makeIssue({
+      id: "source-1",
+      identifier: "ENG-70",
+      title: "Publish API contract",
+    });
+    const target = makeIssue({
+      id: "target-1",
+      identifier: "ENG-71",
+      title: "Build client",
+    });
+    const { client, spies, relations } = createMockLinear({
+      issues: [source, target],
+    });
+    setLinearClientForTests(client);
+
+    const planned = await run([
+      "issue",
+      "relation",
+      "add",
+      "ENG-70",
+      "--blocks",
+      "ENG-71",
+      "--dry-run",
+    ]);
+    expect(planned.exit).toBe(0);
+    expect(planned.out).toContain("createIssueRelation");
+    expect(spies.createIssueRelation.calls).toHaveLength(0);
+
+    const created = await run([
+      "issue",
+      "relation",
+      "add",
+      "ENG-70",
+      "--blocks",
+      "ENG-71",
+    ]);
+    expect(created.exit).toBe(0);
+    expect(spies.createIssueRelation.calls).toHaveLength(1);
+    expect(relations[0]).toMatchObject({
+      issueId: source.id,
+      relatedIssueId: target.id,
+      type: "blocks",
+    });
+
+    const listed = await run(["issue", "relation", "list", "ENG-71"]);
+    expect(listed.exit).toBe(0);
+    expect(listed.out).toContain("blocked-by");
+    expect(listed.out).toContain("ENG-70 Publish API contract");
+
+    const noOp = await run([
+      "issue",
+      "relation",
+      "add",
+      "ENG-70",
+      "--blocks",
+      "ENG-71",
+    ]);
+    expect(noOp.exit).toBe(0);
+    expect(noOp.out).toContain("no-op");
+    expect(spies.createIssueRelation.calls).toHaveLength(1);
   });
 });
 
