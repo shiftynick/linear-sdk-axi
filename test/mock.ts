@@ -651,6 +651,8 @@ function applyIssueFilter(
     if (team?.key?.eq && issue.team.key !== team.key.eq) return false;
     const identifier = filter.identifier as { eq?: string } | undefined;
     if (identifier?.eq && issue.identifier !== identifier.eq) return false;
+    const project = filter.project as { id?: { eq?: string } } | undefined;
+    if (project?.id?.eq && issue.project?.id !== project.id.eq) return false;
     const state = filter.state as
       | { type?: { eq?: string; nin?: string[] }; name?: { eqIgnoreCase?: string } }
       | undefined;

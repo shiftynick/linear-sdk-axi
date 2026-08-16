@@ -19,6 +19,8 @@ import {
   createProject,
   getProject,
   getProjectStatus,
+  hydrateIssue,
+  listIssues,
   listProjectStatuses,
   listProjects,
   projectIssueCounts,
@@ -44,7 +46,7 @@ List, view, create, or update Linear projects.
 
 subcommands: list, view <id|name>, status list, create, update <id|name>
 flags{list}: --team <key>, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --help
-flags{view}: --full, --help
+flags{view}: --full, --issues, --team <key>, --limit (issue page size, default 20), --after <cursor>, --all --max-items <n>, --help
 flags{status list}: --limit (default 50)
 flags{create}: --name (required), --team (required unless only one team), --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
 flags{update}: --name, --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD|none>, --target-date <YYYY-MM-DD|none>, --dry-run
@@ -121,7 +123,11 @@ async function listProjectsCommand(
   }));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
-    formatCountLine({ count: items.length, limit: pagination.maxItems, totalCount: projects.totalCount }),
+    formatCountLine({
+      count: items.length,
+      limit: projects.pagination.hasNextPage ? pagination.maxItems : undefined,
+      totalCount: projects.totalCount,
+    }),
     renderList("projects", items, listSchema, "0 projects"),
     renderPagination(projects.pagination),
     renderHelp([
@@ -167,9 +173,15 @@ async function viewProjectCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--full", "--team"], "project view");
+  assertNoUnknownFlags(args, ["--full", "--issues", "--team", ...PAGINATION_FLAGS], "project view");
   const id = requirePositional(args, 1, "project id or name");
   const full = hasFlag(args, "--full");
+  const includeIssues = hasFlag(args, "--issues");
+  const paginationFlagsPresent = PAGINATION_FLAGS.some((flag) =>
+    args.some((arg) => arg === flag || arg.startsWith(`${flag}=`)));
+  if (!includeIssues && paginationFlagsPresent) {
+    throw new AxiError("project view pagination flags require --issues", "VALIDATION_ERROR");
+  }
   const project = await getProject(id);
   const status = await getProjectStatus(project);
   const description =
@@ -208,11 +220,37 @@ async function viewProjectCommand(
       `Run \`linear-sdk-axi project view ${ident} --full${suffix}\` to see complete description`,
     );
   }
-  help.push(`Run \`linear-sdk-axi issue list${suffix}\` to list issues`);
-  return renderOutput([
+  help.push(`Run \`linear-sdk-axi issue list --project ${String(project.id)}${suffix}\` to list project issues`);
+  const blocks = [
     renderDetail("project", item, schema),
-    renderHelp(help),
-  ]);
+  ];
+  if (includeIssues) {
+    const pagination = parsePagination(args, 20);
+    let teamId: string | undefined;
+    if (ctx?.teamKey) {
+      const team = await resolveTeamFromContext(ctx);
+      teamId = team.id ? String(team.id) : undefined;
+    }
+    const result = await listIssues({
+      pagination,
+      filter: {
+        project: { id: { eq: String(project.id) } },
+        ...(teamId ? { team: { id: { eq: teamId } } } : {}),
+      },
+    });
+    const issues = await Promise.all(result.nodes.map(hydrateIssue));
+    blocks.push(
+      formatCountLine({
+        count: issues.length,
+        limit: result.pagination.hasNextPage ? pagination.maxItems : undefined,
+        totalCount: result.totalCount,
+      }),
+      renderList("issues", issues, [field("identifier"), field("title"), field("state"), field("team")], "0 project issues"),
+      renderPagination(result.pagination),
+    );
+  }
+  blocks.push(renderHelp(help));
+  return renderOutput(blocks);
 }
 
 function parsePriority(value: string | undefined): number | undefined {

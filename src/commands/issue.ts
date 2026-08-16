@@ -55,7 +55,7 @@ export const ISSUE_HELP = `usage: linear-sdk-axi issue <subcommand>
 subcommands[8]:
   list, search <query>, view <id>, create, update <id>, relation <list|add>, comment <id>, comment list <id>, close <id>
 flags{list}:
-  --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --unblocked, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --fields <a,b,c>
+  --team <key>, --project <id|name>, --assignee <me|userid|email|name>, --state <name|type>, --unblocked, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --fields <a,b,c>
 flags{search}:
   --team <key>, --limit (page size, default 20), --after <cursor>, --all --max-items <n>, --comments
 flags{view}:
@@ -190,7 +190,7 @@ async function searchIssuesCommand(
   return renderOutput([
     formatCountLine({
       count: hydrated.length,
-      limit: pagination.maxItems,
+      limit: result.pagination.hasNextPage ? pagination.maxItems : undefined,
       ...(teamId ? {} : { totalCount: result.totalCount }),
     }),
     renderList("issues", hydrated, listSchema, "0 matching issues"),
@@ -204,6 +204,7 @@ async function searchIssuesCommand(
 
 function buildIssueFilter(opts: {
   assigneeId?: string;
+  projectId?: string;
   state?: string;
   teamId?: string;
   unblocked?: boolean;
@@ -215,6 +216,9 @@ function buildIssueFilter(opts: {
   }
   if (opts.teamId) {
     filter.team = { id: { eq: opts.teamId } };
+  }
+  if (opts.projectId) {
+    filter.project = { id: { eq: opts.projectId } };
   }
   if (opts.state) {
     if (isStateType(opts.state)) {
@@ -237,16 +241,17 @@ async function listIssuesCommand(
 ): Promise<string> {
   assertNoUnknownFlags(
     args,
-    ["--team", "--assignee", "--state", "--unblocked", "--fields", ...PAGINATION_FLAGS],
+    ["--team", "--project", "--assignee", "--state", "--unblocked", "--fields", ...PAGINATION_FLAGS],
     "issue list",
   );
   const assigneeRaw = optionalFlagArg(args, "--assignee");
+  const projectRaw = optionalFlagArg(args, "--project");
   const stateRaw = optionalFlagArg(args, "--state");
   const unblocked = hasFlag(args, "--unblocked");
   const pagination = parsePagination(args, 30);
   const extraDefs = parseFields(getFlag(args, "--fields"));
   const hasExplicit =
-    Boolean(assigneeRaw) || Boolean(stateRaw) || Boolean(ctx?.teamKey);
+    Boolean(assigneeRaw) || Boolean(stateRaw) || Boolean(projectRaw) || Boolean(ctx?.teamKey);
 
   let assigneeId: string | undefined;
   if (assigneeRaw) {
@@ -262,9 +267,12 @@ async function listIssuesCommand(
     teamId = team.id ? String(team.id) : undefined;
   }
 
+  const projectId = projectRaw ? await resolveProjectId(projectRaw) : undefined;
+
   // Default: assigned-to-me uncompleted unless --assignee/--state/--team given.
   const filter = buildIssueFilter({
     assigneeId,
+    projectId,
     state: stateRaw,
     teamId,
     unblocked,
@@ -282,6 +290,9 @@ async function listIssuesCommand(
     `Run \`linear-sdk-axi issue view <id>${suffix}\` for details`,
     `Run \`linear-sdk-axi issue create --title "..."${suffix}\` to create an issue`,
   ];
+  if (projectRaw) {
+    help.push(`Run \`linear-sdk-axi project view ${JSON.stringify(projectRaw)} --issues${suffix}\` for the project summary`);
+  }
   if (result.pagination.hasNextPage) {
     help.unshift(
       `Run \`linear-sdk-axi issue list --after ${result.pagination.endCursor}${suffix}\` to continue`,
@@ -290,7 +301,7 @@ async function listIssuesCommand(
   return renderOutput([
     formatCountLine({
       count: hydrated.length,
-      limit: pagination.maxItems,
+      limit: result.pagination.hasNextPage ? pagination.maxItems : undefined,
       totalCount: result.totalCount,
     }),
     renderList("issues", hydrated, schema, emptyLabel),
@@ -836,7 +847,11 @@ async function listIssueRelationsCommand(
   }));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
-    formatCountLine({ count: items.length, limit: pagination.maxItems, totalCount: relations.totalCount }),
+    formatCountLine({
+      count: items.length,
+      limit: relations.pagination.hasNextPage ? pagination.maxItems : undefined,
+      totalCount: relations.totalCount,
+    }),
     renderList(
       "relations",
       items,

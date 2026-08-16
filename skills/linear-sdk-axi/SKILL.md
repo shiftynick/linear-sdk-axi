@@ -49,6 +49,7 @@ npx -y linear-sdk-axi issue list
 npx -y linear-sdk-axi issue list --team <key>
 npx -y linear-sdk-axi issue list --assignee me --state started
 npx -y linear-sdk-axi issue list --unblocked
+npx -y linear-sdk-axi issue list --project "<id-or-name>"
 npx -y linear-sdk-axi issue list --team <key> --limit 50 --all --max-items 200
 npx -y linear-sdk-axi issue list --team <key> --after <cursor>
 npx -y linear-sdk-axi issue search "login timeout" --team <key>
@@ -82,6 +83,7 @@ npx -y linear-sdk-axi label list --team <key>
 npx -y linear-sdk-axi project list
 npx -y linear-sdk-axi project list --all --max-items 100
 npx -y linear-sdk-axi project view <id>
+npx -y linear-sdk-axi project view <id> --issues
 npx -y linear-sdk-axi project status list
 npx -y linear-sdk-axi project create --name "<outcome>" --team <key> --status "<id|name|type>" --target-date <YYYY-MM-DD> --dry-run
 npx -y linear-sdk-axi project update <id|name> --status "<id|name|type>" --priority <0-4> --target-date <YYYY-MM-DD|none> --dry-run
