@@ -32,8 +32,10 @@ export type MockOrganization = {
 export type MockComment = {
   id: string;
   body: string;
+  parentId?: string;
   user?: MockUser;
   createdAt?: string;
+  resolvedAt?: string;
 };
 
 export type MockProject = {
@@ -277,6 +279,7 @@ export function createMockLinear(options: MockOptions = {}): {
     const comment: MockComment = {
       id: `comment-${Date.now()}`,
       body: String(rec.body ?? ""),
+      parentId: typeof rec.parentId === "string" ? rec.parentId : undefined,
       user: viewer,
     };
     if (found) {

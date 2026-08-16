@@ -213,7 +213,9 @@ export async function getIssueComments(
         id: node.id,
         body: typeof node.body === "string" ? node.body : "",
         author: user?.name ?? user?.displayName ?? user?.email ?? null,
+        parentId: node.parentId ?? null,
         createdAt: node.createdAt ?? null,
+        resolvedAt: node.resolvedAt ?? null,
       });
     }
     return hydrated;

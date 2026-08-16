@@ -46,7 +46,7 @@ import {
 
 export const ISSUE_HELP = `usage: linear-axi issue <subcommand>
 subcommands[6]:
-  list, search <query>, view <id>, create, update <id>, comment <id>, close <id>
+  list, search <query>, view <id>, create, update <id>, comment <id>, comment list <id>, close <id>
 flags{list}:
   --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --limit (default 30), --fields <a,b,c>
 flags{search}:
@@ -58,7 +58,7 @@ flags{create}:
 flags{update}:
   --title, --description/--body, --assignee, --state, --project, --add-label/--remove-label (repeatable), --dry-run
 flags{comment}:
-  --body or --body-file (required), --dry-run
+  --body or --body-file (required), --reply-to <comment-id>, --dry-run
 flags{close}:
   --dry-run
 examples:
@@ -70,6 +70,8 @@ examples:
   linear-axi issue create --title "Fix login" --team ENG --dry-run
   linear-axi issue update ENG-123 --state Done
   linear-axi issue comment ENG-123 --body "Shipped"
+  linear-axi issue comment list ENG-123
+  linear-axi issue comment ENG-123 --reply-to <comment-id> --body "Reply"
   linear-axi issue close ENG-123
 `;
 
@@ -594,17 +596,31 @@ async function commentIssueCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
+  if (args[1] === "list") {
+    return listIssueCommentsCommand(args, ctx);
+  }
   assertNoUnknownFlags(
     args,
-    ["--body", "--body-file", "--description", "--dry-run", "--team"],
+    ["--body", "--body-file", "--description", "--reply-to", "--dry-run", "--team"],
     "issue comment",
   );
   const id = requirePositional(args, 1, "issue id");
   const dryRun = hasFlag(args, "--dry-run");
   const body = takeBody(args, { required: true, inlineFlags: ["--body"] });
+  const replyTo = optionalFlagArg(args, "--reply-to");
   const issue = await getIssue(id);
   const hydrated = await hydrateIssue(issue);
-  const input = { issueId: hydrated.id, body };
+  if (replyTo) {
+    const comments = await getIssueComments(issue);
+    if (!comments.some((comment) => comment.id === replyTo)) {
+      throw new AxiError(
+        `Comment ${replyTo} is not part of issue ${hydrated.identifier}`,
+        "NOT_FOUND",
+        [`Run \`linear-axi issue comment list ${hydrated.identifier}${teamFlagSuffix(ctx)}\` to find a reply target`],
+      );
+    }
+  }
+  const input = { issueId: hydrated.id, body, ...(replyTo ? { parentId: replyTo } : {}) };
   const suffix = teamFlagSuffix(ctx);
   return plannedOrWrite(dryRun, "createComment", input, async () => {
     const comment = await createComment(input);
@@ -613,15 +629,58 @@ async function commentIssueCommand(
         "comment",
         {
           issue: hydrated.identifier,
+          replyTo: replyTo ?? null,
           body: truncateBody(comment.body ?? body, 800),
         },
-        [field("issue"), field("body")],
+        [field("issue"), field("replyTo"), field("body")],
       ),
       renderHelp([
         `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for details`,
       ]),
     ]);
   });
+}
+
+async function listIssueCommentsCommand(
+  args: string[],
+  ctx?: TeamContext,
+): Promise<string> {
+  assertNoUnknownFlags(args, ["--full", "--team"], "issue comment list");
+  const id = requirePositional(args, 2, "issue id");
+  const full = hasFlag(args, "--full");
+  const issue = await getIssue(id);
+  const hydrated = await hydrateIssue(issue);
+  const comments = await getIssueComments(issue);
+  const items = comments.map((comment) => ({
+    id: comment.id ?? null,
+    replyTo: comment.parentId ?? null,
+    author: comment.author ?? null,
+    createdAt: comment.createdAt ?? null,
+    resolvedAt: comment.resolvedAt ?? null,
+    body: full ? comment.body : truncateBody(comment.body, 800),
+  }));
+  const suffix = teamFlagSuffix(ctx);
+  return renderOutput([
+    renderList(
+      "comments",
+      items,
+      [
+        field("id"),
+        field("replyTo"),
+        field("author"),
+        field("createdAt"),
+        field("resolvedAt"),
+        field("body"),
+      ],
+      "0 comments",
+    ),
+    renderHelp([
+      `Run \`linear-axi issue comment ${hydrated.identifier} --reply-to <comment-id> --body "..."${suffix}\` to reply`,
+      full
+        ? `Run \`linear-axi issue view ${hydrated.identifier}${suffix}\` for the issue`
+        : `Run \`linear-axi issue comment list ${hydrated.identifier} --full${suffix}\` for complete comment text`,
+    ]),
+  ]);
 }
 
 async function closeIssueCommand(
