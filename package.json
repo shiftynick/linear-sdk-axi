@@ -1,6 +1,6 @@
 {
   "name": "linear-sdk-axi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AXI-compliant Linear CLI wrapping @linear/sdk — token-efficient TOON output for agents",
   "type": "module",
   "keywords": [
@@ -11,7 +11,7 @@
     "toon"
   ],
   "bin": {
-    "linear-sdk-axi": "./dist/bin/linear-sdk-axi.js"
+    "linear-sdk-axi": "dist/bin/linear-sdk-axi.js"
   },
   "files": [
     "dist",
