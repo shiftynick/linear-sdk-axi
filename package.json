@@ -22,7 +22,12 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc && chmod +x dist/bin/linear-sdk-axi.js",
     "test": "npm run build && vitest run",
-    "dev": "tsx bin/linear-sdk-axi.ts"
+    "dev": "tsx bin/linear-sdk-axi.ts",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "engines": {
