@@ -29,7 +29,9 @@ Invoke with `npx -y linear-sdk-axi` when the binary is not on PATH.
 
 ## Output
 
-- stdout is TOON (not JSON, not prose)
+- stdout is compact TOON by default; pass `--output json` for one versioned JSON value
+- JSON uses `{schemaVersion, ok, command, data, help?}` or an `error` object;
+  it never exposes raw SDK objects
 - Default list schemas: 3-4 fields (identifier, title, state, team)
 - Empty lists are explicit (issues: 0 assigned issues) — never blank stdout
 - Large text is truncated with a size hint; pass --full only when truncated

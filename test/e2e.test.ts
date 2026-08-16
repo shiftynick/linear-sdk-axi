@@ -58,4 +58,19 @@ describe("compiled CLI", () => {
     expect(result.stdout).not.toMatch(/lin_api/i);
     expect(result.stderr).toBe("");
   });
+
+  it("emits one JSON value for success, help, version, and auth errors", () => {
+    for (const args of [
+      ["usage", "issue", "--output", "json"],
+      ["issue", "--help", "--output", "json"],
+      ["--version", "--output", "json"],
+      ["doctor", "--output", "json"],
+    ]) {
+      const result = runBinary(args);
+      const value = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(value.schemaVersion).toBe(1);
+      expect(typeof value.ok).toBe("boolean");
+      expect(result.stderr).toBe("");
+    }
+  });
 });
