@@ -672,6 +672,29 @@ export async function resolveProjectId(idOrName: string): Promise<string> {
   return String(project.id);
 }
 
+export async function createProject(input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().createProject(input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to create project", "UNKNOWN");
+    }
+    const project = await awaitRel(payload?.project);
+    if (!project) throw new AxiError("Project create returned no project", "UNKNOWN");
+    return project;
+  });
+}
+
+export async function updateProject(id: string, input: AnyRec): Promise<AnyRec> {
+  return withLinearErrors(async () => {
+    const payload = await getLinearClient().updateProject(id, input);
+    if (payload && payload.success === false) {
+      throw new AxiError("Failed to update project", "UNKNOWN");
+    }
+    const project = await awaitRel(payload?.project);
+    return project ?? (await getProject(id));
+  });
+}
+
 export async function createIssue(input: AnyRec): Promise<AnyRec> {
   return withLinearErrors(async () => {
     const client = getLinearClient();

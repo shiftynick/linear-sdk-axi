@@ -101,12 +101,23 @@ const TOPICS: Record<string, UsageTopic> = {
     next: ["Team results include workspace labels plus labels scoped to that team"],
   },
   project: {
-    summary: "List project progress or inspect one project",
+    summary: "List, inspect, create, or safely update named outcomes",
     entries: [
       { goal: "list", command: "linear-sdk-axi project list [--team <key>]" },
       { goal: "inspect", command: "linear-sdk-axi project view <id|name> [--full]" },
+      {
+        goal: "create safely",
+        command: "linear-sdk-axi project create --name \"...\" --team <key> [--target-date YYYY-MM-DD] --dry-run",
+      },
+      {
+        goal: "change outcome details",
+        command: "linear-sdk-axi project update <id|name> [--priority 0-4] [--target-date YYYY-MM-DD|none] --dry-run",
+      },
     ],
-    next: ["Project details include issue counts by workflow state"],
+    next: [
+      "A project is a named outcome, not an issue bucket",
+      "Project writes support --dry-run and idempotent no-ops",
+    ],
   },
   cycle: {
     summary: "Read cycle progress, timing, and descriptions",
