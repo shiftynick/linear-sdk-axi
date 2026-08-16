@@ -1,4 +1,5 @@
 import { encode } from "@toon-format/toon";
+import type { PaginationInfo } from "./pagination.js";
 
 /**
  * Field extractor definitions for transforming JSON into flat TOON-friendly objects.
@@ -164,6 +165,10 @@ export function renderError(
 /** Combine multiple TOON blocks into a single output string. */
 export function renderOutput(blocks: string[]): string {
   return blocks.filter(Boolean).join("\n");
+}
+
+export function renderPagination(pagination: PaginationInfo): string {
+  return encode({ pagination });
 }
 
 function formatRelativeTime(iso: string | null | undefined): string {

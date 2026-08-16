@@ -14,6 +14,7 @@ import { takeBody, truncateBody, wasTruncated } from "../body.js";
 import type { TeamContext } from "../client.js";
 import { teamFlagSuffix } from "../client.js";
 import { formatCountLine } from "../format.js";
+import { PAGINATION_FLAGS, parsePagination } from "../pagination.js";
 import {
   createProject,
   getProject,
@@ -33,6 +34,7 @@ import {
   renderHelp,
   renderList,
   renderOutput,
+  renderPagination,
   type FieldDef,
 } from "../toon.js";
 import { assertMaxLength, LINEAR_LIMITS } from "../validation.js";
@@ -41,7 +43,7 @@ export const PROJECT_HELP = `usage: linear-sdk-axi project <list|view|status|cre
 List, view, create, or update Linear projects.
 
 subcommands: list, view <id|name>, status list, create, update <id|name>
-flags{list}: --team <key>, --limit (default 30), --help
+flags{list}: --team <key>, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --help
 flags{view}: --full, --help
 flags{status list}: --limit (default 50)
 flags{create}: --name (required), --team (required unless only one team), --description/--body, --status <id|name|type>, --priority <0-4>, --start-date <YYYY-MM-DD>, --target-date <YYYY-MM-DD>, --dry-run
@@ -99,15 +101,15 @@ async function listProjectsCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--limit", "--team"], "project list");
-  const limit = parseLimit(getFlag(args, "--limit"), 30);
+  assertNoUnknownFlags(args, ["--team", ...PAGINATION_FLAGS], "project list");
+  const pagination = parsePagination(args, 30);
   let teamId: string | undefined;
   if (ctx?.teamKey) {
     const team = await resolveTeamFromContext(ctx);
     teamId = team.id ? String(team.id) : undefined;
   }
-  const projects = await listProjects({ first: limit, teamId });
-  const items = await Promise.all(projects.map(async (p) => {
+  const projects = await listProjects({ pagination, teamId });
+  const items = await Promise.all(projects.nodes.map(async (p) => {
     const status = await getProjectStatus(p);
     return {
       id: p.id ?? null,
@@ -119,8 +121,9 @@ async function listProjectsCommand(
   }));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
-    formatCountLine({ count: items.length, limit }),
+    formatCountLine({ count: items.length, limit: pagination.maxItems, totalCount: projects.totalCount }),
     renderList("projects", items, listSchema, "0 projects"),
+    renderPagination(projects.pagination),
     renderHelp([
       `Run \`linear-sdk-axi project view <id>${suffix}\` for details`,
       `Run \`linear-sdk-axi issue list${suffix}\` to list issues`,

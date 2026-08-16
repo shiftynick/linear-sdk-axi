@@ -14,6 +14,7 @@ import type { TeamContext } from "../client.js";
 import { teamFlagSuffix } from "../client.js";
 import { AxiError } from "../errors.js";
 import { formatCountLine } from "../format.js";
+import { PAGINATION_FLAGS, parsePagination, singlePage } from "../pagination.js";
 import {
   completedStateId,
   createComment,
@@ -46,6 +47,7 @@ import {
   renderHelp,
   renderList,
   renderOutput,
+  renderPagination,
   type FieldDef,
 } from "../toon.js";
 
@@ -53,9 +55,9 @@ export const ISSUE_HELP = `usage: linear-sdk-axi issue <subcommand>
 subcommands[8]:
   list, search <query>, view <id>, create, update <id>, relation <list|add>, comment <id>, comment list <id>, close <id>
 flags{list}:
-  --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --unblocked, --limit (default 30), --fields <a,b,c>
+  --team <key>, --assignee <me|userid|email|name>, --state <name|type>, --unblocked, --limit (page size, default 30), --after <cursor>, --all --max-items <n>, --fields <a,b,c>
 flags{search}:
-  --team <key>, --limit (default 20), --comments
+  --team <key>, --limit (page size, default 20), --after <cursor>, --all --max-items <n>, --comments
 flags{view}:
   --full, --comments, --sub-issues
 flags{create}:
@@ -63,11 +65,13 @@ flags{create}:
 flags{update}:
   --title, --description/--body, --assignee, --state, --project, --cycle <id|none>, --priority <0-4>, --estimate <n|none>, --due-date <YYYY-MM-DD|none>, --parent <id|none>, --add-label/--remove-label (repeatable), --dry-run
 flags{relation list}:
-  --limit (default 50)
+  --limit (page size, default 50), --after <cursor>, --all --max-items <n>
 flags{relation add}:
   exactly one: --blocks, --blocked-by, --related, --duplicate-of; --dry-run
 flags{comment}:
   --body or --body-file (required), --reply-to <comment-id>, --dry-run
+flags{comment list}:
+  --full, --limit (page size, default 50), --after <cursor>, --all --max-items <n>
 flags{close}:
   --dry-run
 examples:
@@ -171,25 +175,26 @@ async function searchIssuesCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--team", "--limit", "--comments"], "issue search");
+  assertNoUnknownFlags(args, ["--team", "--comments", ...PAGINATION_FLAGS], "issue search");
   const term = requirePositional(args, 1, "search query");
-  const limit = parseLimit(getFlag(args, "--limit"), 20);
+  const pagination = parsePagination(args, 20);
   const includeComments = hasFlag(args, "--comments");
   let teamId: string | undefined;
   if (ctx?.teamKey) {
     const team = await resolveTeamFromContext(ctx);
     teamId = team.id ? String(team.id) : undefined;
   }
-  const result = await searchIssues(term, { first: limit, teamId, includeComments });
+  const result = await searchIssues(term, { pagination, teamId, includeComments });
   const hydrated = await Promise.all(result.nodes.map(hydrateIssue));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
     formatCountLine({
       count: hydrated.length,
-      limit,
+      limit: pagination.maxItems,
       ...(teamId ? {} : { totalCount: result.totalCount }),
     }),
     renderList("issues", hydrated, listSchema, "0 matching issues"),
+    renderPagination(result.pagination),
     renderHelp([
       `Run \`linear-sdk-axi issue view <id>${suffix}\` for details`,
       `Run \`linear-sdk-axi issue search "..."${suffix}\` to refine the query`,
@@ -232,13 +237,13 @@ async function listIssuesCommand(
 ): Promise<string> {
   assertNoUnknownFlags(
     args,
-    ["--team", "--assignee", "--state", "--unblocked", "--limit", "--fields"],
+    ["--team", "--assignee", "--state", "--unblocked", "--fields", ...PAGINATION_FLAGS],
     "issue list",
   );
   const assigneeRaw = optionalFlagArg(args, "--assignee");
   const stateRaw = optionalFlagArg(args, "--state");
   const unblocked = hasFlag(args, "--unblocked");
-  const limit = parseLimit(getFlag(args, "--limit"), 30);
+  const pagination = parsePagination(args, 30);
   const extraDefs = parseFields(getFlag(args, "--fields"));
   const hasExplicit =
     Boolean(assigneeRaw) || Boolean(stateRaw) || Boolean(ctx?.teamKey);
@@ -266,7 +271,7 @@ async function listIssuesCommand(
     defaultUncompleted: !hasExplicit,
   });
 
-  const result = await listIssues({ first: limit, filter });
+  const result = await listIssues({ pagination, filter });
   const hydrated = await Promise.all(result.nodes.map(hydrateIssue));
   const schema = extraDefs.length > 0 ? [...listSchema, ...extraDefs] : listSchema;
   const emptyLabel = !hasExplicit
@@ -277,18 +282,19 @@ async function listIssuesCommand(
     `Run \`linear-sdk-axi issue view <id>${suffix}\` for details`,
     `Run \`linear-sdk-axi issue create --title "..."${suffix}\` to create an issue`,
   ];
-  if (hydrated.length === limit && result.totalCount > limit) {
+  if (result.pagination.hasNextPage) {
     help.unshift(
-      `Run \`linear-sdk-axi issue list --limit ${Math.max(limit * 2, 50)}${suffix}\` to see more`,
+      `Run \`linear-sdk-axi issue list --after ${result.pagination.endCursor}${suffix}\` to continue`,
     );
   }
   return renderOutput([
     formatCountLine({
       count: hydrated.length,
-      limit,
+      limit: pagination.maxItems,
       totalCount: result.totalCount,
     }),
     renderList("issues", hydrated, schema, emptyLabel),
+    renderPagination(result.pagination),
     renderHelp(help),
   ]);
 }
@@ -336,7 +342,7 @@ async function viewIssueCommand(
   ];
   const blocks: string[] = [renderDetail("issue", item, schema)];
   if (withComments) {
-    const comments = await getIssueComments(issue);
+    const comments = (await getIssueComments(issue, singlePage(50))).nodes;
     const commentItems = comments.map((c) => ({
       id: c.id ?? null,
       author: c.author ?? null,
@@ -817,26 +823,27 @@ async function listIssueRelationsCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--limit", "--team"], "issue relation list");
+  assertNoUnknownFlags(args, ["--team", ...PAGINATION_FLAGS], "issue relation list");
   const id = requirePositional(args, 2, "issue id");
-  const limit = parseLimit(getFlag(args, "--limit"), 50);
+  const pagination = parsePagination(args, 50);
   const issue = await getIssue(id);
   const source = await hydrateIssue(issue);
-  const relations = await getIssueRelations(issue, limit);
-  const items = relations.map((relation) => ({
+  const relations = await getIssueRelations(issue, pagination);
+  const items = relations.nodes.map((relation) => ({
     relation: relationLabel(relation.type, relation.direction),
     issue: `${relation.issue.identifier} ${relation.issue.title}`.trim(),
     state: relation.issue.state,
   }));
   const suffix = teamFlagSuffix(ctx);
   return renderOutput([
-    formatCountLine({ count: items.length, limit }),
+    formatCountLine({ count: items.length, limit: pagination.maxItems, totalCount: relations.totalCount }),
     renderList(
       "relations",
       items,
       [field("relation"), field("issue"), field("state")],
       "0 relations",
     ),
+    renderPagination(relations.pagination),
     renderHelp([
       `Run \`linear-sdk-axi issue view <id>${suffix}\` to inspect a related issue`,
       `Run \`linear-sdk-axi issue relation add ${source.identifier} --blocks <id> --dry-run${suffix}\` to plan a relation`,
@@ -878,7 +885,7 @@ async function addIssueRelationCommand(
     throw new AxiError("An issue cannot relate to itself", "VALIDATION_ERROR");
   }
   const relations = await getIssueRelations(sourceIssue);
-  const alreadyExists = relations.some(
+  const alreadyExists = relations.nodes.some(
     (relation) =>
       relation.type === option.type &&
       relation.issue.id === target.id &&
@@ -947,7 +954,7 @@ async function commentIssueCommand(
   const issue = await getIssue(id);
   const hydrated = await hydrateIssue(issue);
   if (replyTo) {
-    const comments = await getIssueComments(issue);
+    const comments = (await getIssueComments(issue, singlePage(50))).nodes;
     if (!comments.some((comment) => comment.id === replyTo)) {
       throw new AxiError(
         `Comment ${replyTo} is not part of issue ${hydrated.identifier}`,
@@ -981,13 +988,14 @@ async function listIssueCommentsCommand(
   args: string[],
   ctx?: TeamContext,
 ): Promise<string> {
-  assertNoUnknownFlags(args, ["--full", "--team"], "issue comment list");
+  assertNoUnknownFlags(args, ["--full", "--team", ...PAGINATION_FLAGS], "issue comment list");
   const id = requirePositional(args, 2, "issue id");
   const full = hasFlag(args, "--full");
+  const pagination = parsePagination(args, 50);
   const issue = await getIssue(id);
   const hydrated = await hydrateIssue(issue);
-  const comments = await getIssueComments(issue);
-  const items = comments.map((comment) => ({
+  const comments = await getIssueComments(issue, pagination);
+  const items = comments.nodes.map((comment) => ({
     id: comment.id ?? null,
     replyTo: comment.parentId ?? null,
     author: comment.author ?? null,
@@ -1010,6 +1018,7 @@ async function listIssueCommentsCommand(
       ],
       "0 comments",
     ),
+    renderPagination(comments.pagination),
     renderHelp([
       `Run \`linear-sdk-axi issue comment ${hydrated.identifier} --reply-to <comment-id> --body "..."${suffix}\` to reply`,
       full

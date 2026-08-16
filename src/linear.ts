@@ -1,5 +1,11 @@
 import { AxiError, mapLinearError, withLinearErrors } from "./errors.js";
 import { getLinearClient, isUuid, type TeamContext } from "./client.js";
+import {
+  paginate,
+  singlePage,
+  type CollectionResult,
+  type PaginationRequest,
+} from "./pagination.js";
 
 const STATE_TYPES = [
   "triage",
@@ -141,41 +147,37 @@ export async function getAssignedIssues(opts?: {
 }
 
 export async function listIssues(opts: {
-  first?: number;
+  pagination: PaginationRequest;
   filter?: AnyRec;
-}): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+}): Promise<CollectionResult<AnyRec>> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
-    const conn = await client.issues({
-      first: opts.first ?? 30,
-      ...(opts.filter ? { filter: opts.filter } : {}),
-    });
-    const nodes = nodesOf(conn);
-    return {
-      nodes,
-      totalCount: totalOf(conn, nodes.length),
-      hasNextPage: Boolean(conn?.pageInfo?.hasNextPage),
-    };
+    return paginate(opts.pagination, async ({ first, after }) =>
+      client.issues({
+        first,
+        ...(after ? { after } : {}),
+        ...(opts.filter ? { filter: opts.filter } : {}),
+      }));
   });
 }
 
 export async function searchIssues(
   term: string,
-  opts?: { first?: number; teamId?: string; includeComments?: boolean },
-): Promise<{ nodes: AnyRec[]; totalCount: number; hasNextPage: boolean }> {
+  opts: {
+    pagination: PaginationRequest;
+    teamId?: string;
+    includeComments?: boolean;
+  },
+): Promise<CollectionResult<AnyRec>> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
-    const result = await client.searchIssues(term, {
-      first: opts?.first ?? 20,
-      ...(opts?.teamId ? { teamId: opts.teamId } : {}),
-      ...(opts?.includeComments ? { includeComments: true } : {}),
-    });
-    const nodes = nodesOf(result);
-    return {
-      nodes,
-      totalCount: totalOf(result, nodes.length),
-      hasNextPage: Boolean(result?.pageInfo?.hasNextPage),
-    };
+    return paginate(opts.pagination, async ({ first, after }) =>
+      client.searchIssues(term, {
+        first,
+        ...(after ? { after } : {}),
+        ...(opts.teamId ? { teamId: opts.teamId } : {}),
+        ...(opts.includeComments ? { includeComments: true } : {}),
+      }));
   });
 }
 
@@ -256,38 +258,113 @@ async function hydrateIssueRelations(
 
 export async function getIssueRelations(
   issue: AnyRec,
-  first = 50,
-): Promise<HydratedIssueRelation[]> {
+  pagination: PaginationRequest = singlePage(50),
+): Promise<CollectionResult<HydratedIssueRelation>> {
   return withLinearErrors(async () => {
-    const [outgoing, incoming] = await Promise.all([
-      typeof issue.relations === "function"
-        ? issue.relations({ first })
-        : undefined,
-      typeof issue.inverseRelations === "function"
-        ? issue.inverseRelations({ first })
-        : undefined,
-    ]);
-    const [direct, inverse] = await Promise.all([
-      hydrateIssueRelations(outgoing, "outgoing"),
-      hydrateIssueRelations(incoming, "incoming"),
-    ]);
-    return [...direct, ...inverse];
+    type Directional = { raw: AnyRec; direction: "outgoing" | "incoming" };
+    const result = await paginate<Directional>(pagination, async ({ first, after }) => {
+      const incomingPhase = after?.startsWith("incoming:") ?? false;
+      const rawCursor = after
+        ? after.slice(after.indexOf(":") + 1) || undefined
+        : undefined;
+      const outgoingArgs = { first, ...(rawCursor && !incomingPhase ? { after: rawCursor } : {}) };
+      const incomingArgs = { first, ...(rawCursor && incomingPhase ? { after: rawCursor } : {}) };
+
+      if (incomingPhase) {
+        const [outgoingProbe, incoming] = await Promise.all([
+          typeof issue.relations === "function" ? issue.relations({ first: 1 }) : undefined,
+          typeof issue.inverseRelations === "function" ? issue.inverseRelations(incomingArgs) : undefined,
+        ]);
+        const incomingNodes = nodesOf(incoming);
+        const cursor = incoming?.pageInfo?.endCursor;
+        return {
+          nodes: incomingNodes.map((raw) => ({ raw, direction: "incoming" as const })),
+          totalCount: totalOf(outgoingProbe, nodesOf(outgoingProbe).length) +
+            totalOf(incoming, incomingNodes.length),
+          pageInfo: {
+            hasNextPage: Boolean(incoming?.pageInfo?.hasNextPage),
+            endCursor: cursor ? `incoming:${cursor}` : null,
+          },
+        };
+      }
+
+      const [outgoing, incomingProbe] = await Promise.all([
+        typeof issue.relations === "function" ? issue.relations(outgoingArgs) : undefined,
+        typeof issue.inverseRelations === "function" ? issue.inverseRelations({ first: 1 }) : undefined,
+      ]);
+      const outgoingNodes = nodesOf(outgoing);
+      const incomingTotal = totalOf(incomingProbe, nodesOf(incomingProbe).length);
+      const outgoingTotal = totalOf(outgoing, outgoingNodes.length);
+      if (outgoing?.pageInfo?.hasNextPage) {
+        const cursor = outgoing.pageInfo.endCursor;
+        return {
+          nodes: outgoingNodes.map((raw) => ({ raw, direction: "outgoing" as const })),
+          totalCount: outgoingTotal + incomingTotal,
+          pageInfo: {
+            hasNextPage: true,
+            endCursor: cursor ? `outgoing:${cursor}` : null,
+          },
+        };
+      }
+
+      const remaining = first - outgoingNodes.length;
+      const incoming = remaining > 0 && typeof issue.inverseRelations === "function"
+        ? await issue.inverseRelations({ first: remaining })
+        : incomingProbe;
+      const incomingNodes = remaining > 0 ? nodesOf(incoming) : [];
+      const incomingHasNext = remaining === 0
+        ? incomingTotal > 0
+        : Boolean(incoming?.pageInfo?.hasNextPage);
+      const incomingCursor = remaining > 0 ? incoming?.pageInfo?.endCursor : null;
+      return {
+        nodes: [
+          ...outgoingNodes.map((raw) => ({ raw, direction: "outgoing" as const })),
+          ...incomingNodes.map((raw) => ({ raw, direction: "incoming" as const })),
+        ],
+        totalCount: outgoingTotal + incomingTotal,
+        pageInfo: {
+          hasNextPage: incomingHasNext,
+          endCursor: incomingHasNext || incomingNodes.length > 0
+            ? `incoming:${incomingCursor ?? ""}`
+            : outgoing?.pageInfo?.endCursor
+              ? `outgoing:${outgoing.pageInfo.endCursor}`
+              : null,
+        },
+      };
+    });
+
+    const hydrated = await Promise.all(result.nodes.map(async ({ raw, direction }) =>
+      (await hydrateIssueRelations({ nodes: [raw] }, direction))[0]));
+    return { ...result, nodes: hydrated };
   });
 }
 
 export async function getIssueComments(
   issue: AnyRec,
-  first = 50,
-): Promise<AnyRec[]> {
+  pagination: PaginationRequest,
+): Promise<CollectionResult<AnyRec>> {
   return withLinearErrors(async () => {
     if (typeof issue.comments !== "function") {
-      if (Array.isArray(issue.comments)) return issue.comments;
-      return [];
+      const nodes = Array.isArray(issue.comments)
+        ? issue.comments.slice(0, pagination.maxItems)
+        : [];
+      return {
+        nodes,
+        totalCount: Array.isArray(issue.comments) ? issue.comments.length : 0,
+        pagination: {
+          endCursor: null,
+          hasNextPage: false,
+          pagesFetched: 1,
+          capped: false,
+        },
+      };
     }
-    const conn = await issue.comments({ first });
-    const nodes = nodesOf(conn);
+    const result = await paginate<AnyRec>(
+      pagination,
+      ({ first, after }) => issue.comments({ first, ...(after ? { after } : {}) }),
+    );
     const hydrated: AnyRec[] = [];
-    for (const node of nodes) {
+    for (const node of result.nodes) {
       const user = await awaitRel(node.user ?? node.author);
       hydrated.push({
         id: node.id,
@@ -298,7 +375,7 @@ export async function getIssueComments(
         resolvedAt: node.resolvedAt ?? null,
       });
     }
-    return hydrated;
+    return { ...result, nodes: hydrated };
   });
 }
 
@@ -619,20 +696,21 @@ export async function resolveAssigneeId(value: string): Promise<string> {
   });
 }
 
-export async function listProjects(opts?: {
-  first?: number;
+export async function listProjects(opts: {
+  pagination: PaginationRequest;
   teamId?: string;
-}): Promise<AnyRec[]> {
+}): Promise<CollectionResult<AnyRec>> {
   return withLinearErrors(async () => {
     const client = getLinearClient();
     const filter = opts?.teamId
       ? { accessibleTeams: { id: { eq: opts.teamId } } }
       : undefined;
-    const conn = await client.projects({
-      first: opts?.first ?? 30,
-      ...(filter ? { filter } : {}),
-    });
-    return nodesOf(conn);
+    return paginate(opts.pagination, async ({ first, after }) =>
+      client.projects({
+        first,
+        ...(after ? { after } : {}),
+        ...(filter ? { filter } : {}),
+      }));
   });
 }
 
@@ -648,9 +726,11 @@ export async function getProject(idOrName: string): Promise<AnyRec> {
         if (mapped.code !== "NOT_FOUND" && mapped.code !== "UNKNOWN") throw mapped;
       }
     }
-    const projects = await listProjects({ first: 100 });
+    const projects = await listProjects({
+      pagination: singlePage(100),
+    });
     const wanted = idOrName.toLowerCase();
-    const match = projects.find(
+    const match = projects.nodes.find(
       (p) =>
         String(p.id) === idOrName ||
         String(p.name ?? "").toLowerCase() === wanted,
